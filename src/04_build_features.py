@@ -248,11 +248,17 @@ def join_and_prove(cd, ev, cfg, gb) -> pd.DataFrame:
     gb.require(
         "hazard_consequence_correlation", corr > thr,
         f"corr={corr:.3f} on {peak_date.date()} across {len(storm)} counties "
-        f"(gate: >{thr}). If this fails after criteria 1-5 pass the problem is "
-        "SCIENTIFIC, not mechanical: check timezone alignment first, then whether "
-        "the peak day is the storm day in both datasets, then reporting coverage "
-        "in the hardest-hit counties, then whether ERA5 resolved these gusts.",
-        criterion=6)
+        f"(gate: >{thr})",
+        criterion=6,
+        on_fail="If criteria 1-5 passed, the problem is SCIENTIFIC, not "
+                "mechanical. Diagnose in this order: (1) timezone alignment, "
+                "(2) whether the peak day is the storm day in BOTH datasets, "
+                "(3) whether the utilities serving the hardest-hit counties "
+                "report into EAGLE-I, (4) whether ERA5 resolved this storm's "
+                "gusts -- a convective event ERA5 smooths away is a real and "
+                "reportable finding, and the argument for the HRRR upgrade. Do "
+                "not proceed to Phase 2 hoping six years reveals a signal five "
+                "days around the year's strongest storm could not.")
 
     # ---- criterion 2: timezone alignment -----------------------------------
     o_peak = merged.loc[merged.customer_hours.idxmax()]

@@ -1,46 +1,62 @@
-# Pinned. No unpinned versions. (project spec section 10.1)
-#   conda env create -f env/environment.yml   ||   mamba env create -f env/environment.yml
+# Primary environment.
+#   mamba env create -f env/environment.yml     (or conda)
+#   conda activate storm-outage-risk
+#   make env-lock        <-- writes env/environment.lock.yml, the exact solve
+#
+# Version policy, and why it is not "exact pins everywhere":
+#   The binary geo/ML stack below is pinned to RANGES that conda-forge can
+#   actually solve on any platform. Exact conda pins rot -- conda-forge drops
+#   old builds, and a pin that solved on macOS last month fails on linux-64
+#   today with PackagesNotFoundError, which is a worse reproducibility story
+#   than no pin at all. `make env-lock` captures the exact resolved versions
+#   from YOUR successful solve and THAT file is the reproducible artifact you
+#   commit alongside results.
+#
+#   The four packages in the pip: section are exact-pinned because they are not
+#   on conda-forge (or not at a usable version) and PyPI keeps old releases.
 name: storm-outage-risk
 channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - pip=24.2
+  - pip
   # --- core -------------------------------------------------------------
-  - numpy=1.26.4
-  - pandas=2.2.2
-  - scipy=1.13.1
-  - pyarrow=16.1.0
-  - pyyaml=6.0.1
-  - tqdm=4.66.4
+  - numpy>=1.26,<2.1
+  - pandas>=2.2,<2.3
+  - scipy>=1.13,<1.15
+  - pyarrow>=16
+  - pyyaml>=6
+  - tqdm>=4.66
+  - joblib>=1.4
   # --- geospatial -------------------------------------------------------
-  - geopandas=0.14.4
-  - shapely=2.0.4
-  - pyproj=3.6.1
-  - rasterio=1.3.10
-  - rioxarray=0.15.5
+  - geopandas>=0.14,<1.1
+  - shapely>=2.0
+  - pyproj>=3.6
+  - pyogrio>=0.8            # geoparquet/shapefile IO without fiona
+  - rasterio>=1.3           # NLCD canopy clip (optional step)
+  - rioxarray>=0.15
   # --- weather / arrays -------------------------------------------------
-  - xarray=2024.6.0
-  - netcdf4=1.6.5
-  - dask=2024.6.2
-  - cfgrib=0.9.12.0
-  - eccodes=2.35.0
-  - h5netcdf=1.3.0
+  - xarray>=2024.6
+  - netcdf4>=1.6
+  - h5netcdf>=1.3
+  - dask>=2024.6
+  - cfgrib>=0.9.12          # GEFS GRIB2
+  - eccodes>=2.35
   # --- models -----------------------------------------------------------
-  - scikit-learn=1.5.0
-  - lightgbm=4.4.0
-  - lifelines=0.28.0
-  - statsmodels=0.14.2
+  - scikit-learn>=1.5,<1.7
+  - lightgbm>=4.4
+  - statsmodels>=0.14
   # --- figures ----------------------------------------------------------
-  - matplotlib-base=3.8.4
+  - matplotlib-base>=3.8
   # --- cloud fetch ------------------------------------------------------
-  - boto3=1.34.131
-  - botocore=1.34.131
-  - requests=2.32.3
+  - boto3>=1.34
+  - requests>=2.32
   # --- dev --------------------------------------------------------------
-  - pytest=8.2.2
-  - ruff=0.5.0
+  - pytest>=8
+  - ruff>=0.5
   - pip:
-      - cdsapi==0.7.7      # CDS API changed in 2024-25; >=0.7.7 required
-      - ngboost==0.5.1
-      - properscoring==0.1
+      # not on conda-forge at a usable version -- exact pins, verified on PyPI
+      - lifelines==0.28.0     # Weibull AFT, Cox, Schoenfeld residuals
+      - ngboost==0.5.1        # magnitude model, Phase 2 primary
+      - cdsapi==0.7.7         # CDS API changed in 2024-25; >=0.7.7 required
+      - properscoring==0.1    # CRPS, Phase 2 validation

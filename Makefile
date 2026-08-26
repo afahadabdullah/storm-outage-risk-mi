@@ -9,15 +9,26 @@ P1      ?= config/phase1.yaml
 SRC      = src
 
 .DEFAULT_GOAL := help
-.PHONY: help env window fetch weather events features models compose forecast \
-        value phase1 phase1-synthetic phase1-diff gates test lint clean-phase1
+.PHONY: help env env-pip env-lock doctor window fetch weather events features models compose forecast \
+        value phase1 phase1-synthetic phase1-diff gates gates-synthetic test lint \
+        clean-phase1 clean-synthetic era5-only
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 	  awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n",$$1,$$2}'
 
-env: ## create the conda environment
-	conda env create -f env/environment.yml
+env: ## create the conda environment (ranges; then run `make env-lock`)
+	mamba env create -f env/environment.yml || conda env create -f env/environment.yml
+
+env-pip: ## alternative: a uv/pip virtualenv from exact pins
+	uv venv --python 3.11 .venv && uv pip install -r env/requirements.txt
+
+env-lock: ## capture the exact solve -- THIS is the reproducible artifact
+	conda env export --no-builds | grep -v '^prefix:' > env/environment.lock.yml
+	@echo "wrote env/environment.lock.yml -- commit it alongside any results"
+
+doctor: ## preflight a fresh machine: packages, ~/.cdsapirc, network, disk
+	@$(PY) $(SRC)/doctor.py
 
 # ---- individual steps -------------------------------------------------------
 window: ## step 0: pick the 5-day window from data (spec section 3)
@@ -46,8 +57,11 @@ phase1: ## gate criterion 10: one command, raw -> decision number
 phase1-synthetic: ## same pipeline on generated data: proves plumbing with no downloads
 	$(PY) $(SRC)/run_phase1.py --config $(CFG) --phase1 $(P1) --synthetic
 
-gates: ## reprint the go/no-go table from the last run
+gates: ## reprint the go/no-go table from the last real run
 	$(PY) $(SRC)/run_phase1.py --config $(CFG) --phase1 $(P1) --report-only
+
+gates-synthetic: ## reprint the go/no-go table from the last synthetic run
+	$(PY) $(SRC)/run_phase1.py --config $(CFG) --phase1 $(P1) --report-only --synthetic
 
 phase1-diff: ## section 9.1: every key phase1.yaml overrides, for the revert checklist
 	@$(PY) -c "import yaml;a=yaml.safe_load(open('$(CFG)'));b=yaml.safe_load(open('$(P1)'));\
@@ -59,5 +73,9 @@ test: ## the assertion suite, promoted to pytest (section 9.5)
 lint: ; ruff check $(SRC) tests
 
 clean-phase1: ## section 9.3: delete every contaminated phase 1 artifact
-	rm -rf models/* figures/phase1_* data/processed/phase1_*
+	rm -rf models/phase1_* figures/phase1_* data/processed/phase1_*
 	@echo "phase 1 models and figures deleted. download cache in data/raw kept."
+
+clean-synthetic: ## remove the generated stand-in data entirely
+	rm -rf data/*/_synthetic models/_synthetic figures/_synthetic logs/_synthetic \
+	       config/_phase1_synthetic.yaml

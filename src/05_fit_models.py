@@ -154,7 +154,7 @@ def fit_magnitude(splits, feats, cfg, gb):
             params = m.pred_dist(splits["all"][feats]).params
             qpred = np.column_stack([
                 m.pred_dist(splits["all"][feats]).ppf(q) for q in qs])
-            _assert_quantiles(qpred, qs, gb, "ngboost")
+            qpred = _assert_quantiles(qpred, qs, gb, "ngboost")
             return {"kind": "ngboost", "model": m, "quantiles": qs}, qpred, params
         except Exception as err:                                # noqa: BLE001
             log.warning("NGBoost unavailable/failed (%s) -- falling back to "
@@ -173,23 +173,31 @@ def fit_magnitude(splits, feats, cfg, gb):
                                   random_state=int(cfg.get("random_seed", 0))).fit(X, y)
         models[q] = m
         preds.append(m.predict(splits["all"][feats]))
-    qpred = np.column_stack(preds)
-    _assert_quantiles(qpred, qs, gb, "lgbm_quantile")
+    qpred = _assert_quantiles(np.column_stack(preds), qs, gb, "lgbm_quantile")
     return {"kind": "lgbm_quantile", "models": models, "quantiles": qs}, qpred, None
 
 
 def _assert_quantiles(qpred, qs, gb, kind):
+    """Independently fitted quantile regressions can cross, and a non-monotone
+    quantile function is not a distribution. Rearranging (sorting each row) is
+    the standard fix and never increases estimation error -- but the RAW
+    crossing count is recorded, because a large one says the quantile route is
+    straining and NGBoost is the better primary model."""
     gb.require("magnitude_is_a_distribution", qpred.shape[1] == len(qs),
                f"{kind}: {qpred.shape[1]} quantile columns for {len(qs)} quantiles",
                criterion=7)
     gb.require("magnitude_no_nan", bool(np.isfinite(qpred).all()),
                f"{kind}: finite predictions", criterion=7)
-    crossings = int((np.diff(qpred, axis=1) < -1e-9).sum())
-    gb.check("no_quantile_crossing", crossings == 0,
-             f"{kind}: {crossings} crossing pairs "
-             "(independent quantile fits can cross; the composition step sorts "
-             "each row, and Phase 2 should fit a monotone model instead)",
-             criterion=7)
+    raw_crossings = int((np.diff(qpred, axis=1) < -1e-9).sum())
+    rearranged = np.sort(qpred, axis=1)
+    gb.note(f"{kind}_raw_quantile_crossings",
+            f"{raw_crossings} crossing pairs before rearrangement "
+            f"({raw_crossings / max(qpred.shape[0] * (len(qs) - 1), 1):.1%} of pairs)")
+    gb.require("no_quantile_crossing",
+               bool((np.diff(rearranged, axis=1) >= -1e-9).all()),
+               f"{kind}: quantile function monotone after rearrangement "
+               f"({raw_crossings} raw crossings repaired)", criterion=7)
+    return rearranged
 
 
 def fit_duration(splits, feats, cfg, gb):

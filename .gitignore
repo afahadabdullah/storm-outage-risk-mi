@@ -34,3 +34,11 @@ venv/
 # ---- OS ----
 .DS_Store
 config/_phase1_synthetic.yaml
+data/raw/_synthetic/
+data/interim/_synthetic/
+data/processed/_synthetic/
+models/_synthetic/
+figures/_synthetic/
+logs/_synthetic/
+_to_delete/
+docs/phase1_report_synthetic.md

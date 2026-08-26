@@ -15,14 +15,21 @@ from pathlib import Path
 
 from .config import PATHS
 
-_LOG_FILE = PATHS.logs / "phase1_run.log"
-_MEAS_FILE = PATHS.logs / "measurements.json"
+
 
 # Phase 2 scale factors, from the phase 1 spec section 8 table.
 PHASE2_FACTOR = {
     "era5_download": 438, "era5_to_county": 438, "event_detection": 438,
     "feature_build": 438, "model_fit": 50, "monte_carlo": 438 * 20,
 }
+
+
+def _log_file():
+    return PATHS.logs / "phase1_run.log"
+
+
+def _meas_file():
+    return PATHS.logs / "measurements.json"
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -34,7 +41,7 @@ def get_logger(name: str) -> logging.Logger:
                             datefmt="%H:%M:%S")
     sh = logging.StreamHandler()
     sh.setFormatter(fmt)
-    fh = logging.FileHandler(_LOG_FILE)
+    fh = logging.FileHandler(_log_file())
     fh.setFormatter(fmt)
     log.addHandler(sh)
     log.addHandler(fh)
@@ -43,15 +50,14 @@ def get_logger(name: str) -> logging.Logger:
 
 
 def _load() -> dict:
-    if _MEAS_FILE.exists():
-        return json.loads(_MEAS_FILE.read_text())
-    return {}
+    f = _meas_file()
+    return json.loads(f.read_text()) if f.exists() else {}
 
 
 def record(key: str, **fields) -> None:
     data = _load()
     data.setdefault(key, {}).update(fields)
-    _MEAS_FILE.write_text(json.dumps(data, indent=2, default=str))
+    _meas_file().write_text(json.dumps(data, indent=2, default=str))
 
 
 def peak_rss_gb() -> float:
@@ -104,6 +110,8 @@ def measurements_markdown() -> str:
             out.append(f"| {label} | _not measured_ | -- |")
             continue
         meas = f"{s:,.1f} s" + (f" / {mb:,.0f} MB" if mb else "")
+        if m.get("synthetic"):
+            meas += " (synthetic -- no download)"
         f = PHASE2_FACTOR.get(key)
         proj = f"{s * f / 3600:,.1f} h" if f else "--"
         out.append(f"| {label} | {meas} | {proj} |")

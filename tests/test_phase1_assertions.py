@@ -126,13 +126,23 @@ def test_hazard_consequence_correlation_on_the_peak_day():
 
 
 def test_monte_carlo_carries_uncertainty():
+    """Every row that drew at least one event must carry spread.
+
+    Not every row: a county-day with a low occurrence probability can draw zero
+    events in all N draws and be legitimately all-zero. Asserting spread on
+    those would fail for a reason that has nothing to do with the bug this test
+    exists to catch -- composing medians instead of sampling.
+    """
     p = PATHS.processed / "phase1_mc_samples.npy"
     if not p.exists():
         pytest.skip("MC samples not built yet")
     s = np.load(p)
     assert s.ndim == 2 and s.shape[1] > 1
     assert (s >= 0).all()
-    assert (s.std(axis=1) > 0).all(), "no spread -- point estimates were composed"
+    fired = s.max(axis=1) > 0
+    assert fired.any(), "no county-day ever drew an event -- occurrence model is dead"
+    assert (s[fired].std(axis=1) > 0).all(), \
+        "a fired row with zero spread means point estimates were composed"
 
 
 def test_area_weights_sum_to_one_in_equal_area_crs():

@@ -106,8 +106,11 @@ def main() -> None:
     obs = df.event.to_numpy()
 
     ratios = [float(r) for r in cfg.get("cost_loss_ratios", [0.05, 0.1, 0.2])]
-    if cfg.is_phase1:
-        ratios = ratios[:3] if len(ratios) >= 3 else ratios
+    if cfg.is_phase1 and len(ratios) > 3:
+        # three SPREAD values, not the first three: a cluster of tiny C/L
+        # ratios all sit on the same side of every predicted probability and
+        # produce a flat, uninformative curve
+        ratios = [ratios[0], ratios[len(ratios) // 2], ratios[-1]]
     values = {a: cost_loss_value(proba, obs, a) for a in ratios}
     for a, v in values.items():
         log.info("C/L = %.2f   relative economic value = %+.3f", a, v)
@@ -120,8 +123,8 @@ def main() -> None:
              "value changes with C/L (a flat curve means the threshold rule is "
              "not binding, or every probability is on one side of every ratio)")
 
-    delta = float(cfg.get("hazard_reduction_deltas", [0.2])[1
-                  if len(cfg.get("hazard_reduction_deltas", [0.2])) > 1 else 0])
+    deltas = [float(d) for d in cfg.get("hazard_reduction_deltas", [0.20])]
+    delta = deltas[len(deltas) // 2]          # the middle scenario
     be = break_even(samples, df, cfg, delta)
     gb.require("break_even_finite_positive",
                bool(np.isfinite(be.max_cost_per_asset_usd).all()

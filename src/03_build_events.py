@@ -213,9 +213,10 @@ def detect_events(hourly, cfg, gb) -> pd.DataFrame:
 
     # ---- step 3 assertions --------------------------------------------------
     lo, hi = cfg.get("expected_event_count", [20, 60])
-    gb.require("event_table_non_empty", len(ev) > 0,
-               "EMPTY EVENT TABLE -- window selection failed, restart at section 3",
-               criterion=3)
+    gb.require("event_table_non_empty", len(ev) > 0, f"{len(ev)} events detected",
+               criterion=3,
+               on_fail="EMPTY EVENT TABLE -- the window missed the storm or the "
+                       "threshold is still too high. Restart at spec section 3.")
     gb.require("customer_hours_positive", bool(ev.customer_hours.gt(0).all()),
                f"min customer_hours = {ev.customer_hours.min():,.1f}", criterion=3)
     gb.require("end_after_start", bool((ev.end_time > ev.start_time).all()),

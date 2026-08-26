@@ -13,7 +13,10 @@ from pathlib import Path
 
 from .config import PATHS
 
-_GATE_FILE = PATHS.logs / "phase1_gates.json"
+
+def _gate_file():
+    return PATHS.logs / "phase1_gates.json"
+
 
 # Section 7 go/no-go table. Criterion 6 is the real gate.
 CRITERIA = {
@@ -58,10 +61,13 @@ class GateBook:
         return ok
 
     def require(self, name: str, condition: bool, detail: str = "",
-                criterion: int | None = None) -> None:
+                criterion: int | None = None, on_fail: str = "") -> None:
+        """`detail` is evidence and goes in the report either way. `on_fail` is
+        the diagnostic guidance and appears only when it is actually needed."""
         if not self.check(name, condition, detail, criterion):
             self.flush()
-            raise GateFailure(f"[{self.step}] {name}: {detail}")
+            raise GateFailure(f"[{self.step}] {name}: {detail}"
+                              + (f"\n  --> {on_fail}" if on_fail else ""))
 
     def note(self, name: str, detail: str) -> None:
         """A recorded observation that is not pass/fail (e.g. a measured value)."""
@@ -70,23 +76,22 @@ class GateBook:
     # ---- persistence --------------------------------------------------------
     def flush(self) -> None:
         prior = []
-        if _GATE_FILE.exists():
-            prior = [r for r in json.loads(_GATE_FILE.read_text())
+        if _gate_file().exists():
+            prior = [r for r in json.loads(_gate_file().read_text())
                      if r["step"] != self.step]
-        _GATE_FILE.write_text(json.dumps(
+        _gate_file().write_text(json.dumps(
             prior + [asdict(r) for r in self.records], indent=2))
 
     @staticmethod
     def load_all() -> list[dict]:
-        if not _GATE_FILE.exists():
-            return []
-        return json.loads(_GATE_FILE.read_text())
+        f = _gate_file()
+        return json.loads(f.read_text()) if f.exists() else []
 
     @staticmethod
     def reset() -> None:
         """Truncate rather than unlink: some sandboxes disallow deletes, and an
         empty gate book is what the next run needs either way."""
-        _GATE_FILE.write_text("[]")
+        _gate_file().write_text("[]")
 
 
 def book(step: str) -> GateBook:

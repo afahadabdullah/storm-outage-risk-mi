@@ -6,7 +6,7 @@ pipeline reads a region-specific constant from anywhere else.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Any
 
@@ -15,15 +15,45 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@dataclass(frozen=True)
+# A namespace suffix keeps a synthetic run from ever touching real artifacts.
+# Without it, generated stand-in data lands in data/raw/ and the next real
+# `make fetch` sees eaglei_outages_2019.csv already there and skips the
+# download -- which is exactly the kind of silent, plausible-looking failure
+# this project is meant to be paranoid about.
+NAMESPACE_ENV = "STORM_DATA_NS"
+
+
 class Paths:
-    root: Path = ROOT
-    raw: Path = ROOT / "data" / "raw"
-    interim: Path = ROOT / "data" / "interim"
-    processed: Path = ROOT / "data" / "processed"
-    models: Path = ROOT / "models"
-    figures: Path = ROOT / "figures"
-    logs: Path = ROOT / "logs"
+    """Directory layout. Resolved lazily so the namespace can be set at runtime."""
+
+    root = ROOT
+
+    @staticmethod
+    def _ns() -> str:
+        return os.environ.get(NAMESPACE_ENV, "").strip()
+
+    def _sub(self, *parts: str) -> Path:
+        p = ROOT.joinpath(*parts)
+        ns = self._ns()
+        return (p / ns) if ns else p
+
+    @property
+    def raw(self) -> Path: return self._sub("data", "raw")
+
+    @property
+    def interim(self) -> Path: return self._sub("data", "interim")
+
+    @property
+    def processed(self) -> Path: return self._sub("data", "processed")
+
+    @property
+    def models(self) -> Path: return self._sub("models")
+
+    @property
+    def figures(self) -> Path: return self._sub("figures")
+
+    @property
+    def logs(self) -> Path: return self._sub("logs")
 
     def ensure(self) -> "Paths":
         for p in (self.raw, self.interim, self.processed,

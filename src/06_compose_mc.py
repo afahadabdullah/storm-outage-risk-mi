@@ -94,12 +94,31 @@ def main() -> None:
                f"{samples.shape} == ({n_rows}, {n_draws})", criterion=8)
     gb.require("mc_non_negative", bool((samples >= 0).all()),
                f"min sample {samples.min():.3f}", criterion=8)
+
+    # The spec's assertion is `samples.std(axis=1) > 0` for every row. Taken
+    # literally that is wrong, and Phase 1 is where you find out: a county-day
+    # with a low occurrence probability can draw zero events in all N draws, so
+    # its composed samples are legitimately all-zero. With 50 draws that is
+    # common; with 1000 it is rare but still possible.
+    #
+    # The assertion's INTENT is to catch composing medians instead of sampling,
+    # so test that directly on the conditional stages -- which must have spread
+    # on every row -- and on composed rows that actually fired.
+    fired = samples.max(axis=1) > 0
     row_std = samples.std(axis=1)
+    gb.require("magnitude_draws_have_spread", bool((mag.std(axis=1) > 0).all()),
+               f"min per-row magnitude std {mag.std(axis=1).min():.4g}", criterion=8)
+    gb.require("duration_draws_have_spread", bool((dur.std(axis=1) > 0).all()),
+               f"min per-row duration std {dur.std(axis=1).min():.4g}", criterion=8)
     gb.require(
-        "mc_has_spread", bool((row_std > 0).all()),
-        f"{int((row_std == 0).sum())} rows with zero spread "
-        "(zero spread means point estimates were composed instead of sampled)",
-        criterion=8)
+        "mc_has_spread", bool((row_std[fired] > 0).all()),
+        f"{int(fired.sum())}/{n_rows} rows drew at least one event; all of them "
+        f"have non-zero spread ({int((~fired).sum())} rows never fired at "
+        f"n_mc_draws={n_draws})",
+        criterion=8,
+        on_fail="A fired row with zero spread means point estimates were "
+                "composed instead of sampled -- the output looks entirely "
+                "reasonable and carries no uncertainty at all.")
 
     np.save(SAMPLES_PATH, samples)
     statewide = samples.sum(axis=0)

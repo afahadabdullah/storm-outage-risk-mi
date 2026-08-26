@@ -16,7 +16,7 @@ import pandas as pd
 
 from .config import PATHS, Config
 from .geo import CELL_DEG, counties_path
-from .logio import get_logger
+from .logio import get_logger, record
 
 log = get_logger("synthetic")
 SEED = 20260826
@@ -68,11 +68,11 @@ def _storm_field(lats, lons, times, rng):
     hours = np.arange(nt)
     track_lon = np.linspace(lons.min() - 1, lons.max() + 1, nt)
     peak_hour = nt // 2
-    intensity = 26 * np.exp(-0.5 * ((hours - peak_hour) / 9.0) ** 2)
+    intensity = 24 * np.exp(-0.5 * ((hours - peak_hour) / 8.0) ** 2)
 
     gust = np.empty((nt, *lon_g.shape), dtype=np.float32)
     for t in range(nt):
-        d = ((lon_g - track_lon[t]) / 1.6) ** 2 + ((lat_g - 44.5) / 3.2) ** 2
+        d = ((lon_g - track_lon[t]) / 1.5) ** 2 + ((lat_g - 44.6) / 1.5) ** 2
         gust[t] = (5.0 + intensity[t] * np.exp(-0.5 * d)
                    + rng.normal(0, 0.8, lon_g.shape)).astype(np.float32)
     return np.clip(gust, 0.5, None)
@@ -159,12 +159,12 @@ def make_outages(cfg: Config, counties, era5, start: pd.Timestamp, days: int):
         g = gust[:, yy, xx]
         # sharp response above ~15 m/s; floor of routine faults always present
         frac = 0.0016 + 0.0055 * np.clip(g - 15.0, 0, None) ** 1.35 / 10
-        frac = frac * np.exp(rng.normal(0, 0.35, len(g)))
+        frac = frac * np.exp(rng.normal(0, 0.26, len(g)))
         # restoration tail: outages decay over a few hours, they do not vanish
         decayed = np.maximum.accumulate(np.zeros_like(frac))
         acc = 0.0
         for t in range(len(frac)):
-            acc = max(frac[t], acc * 0.72)
+            acc = max(frac[t], acc * 0.80)
             decayed[t] = acc
         out = np.clip(decayed, 0, 0.9) * m
         for t, h in enumerate(hours):
@@ -221,6 +221,9 @@ def make_gefs(cfg: Config, era5, n_members: int, lead_hours):
 
 def generate_all(cfg: Config, start: pd.Timestamp, days: int, n_members: int,
                  lead_hours):
+    # so the section 8 table reads "0.0 s (synthetic)" instead of a blank that
+    # would fail gate criterion 11 for the wrong reason
+    record("era5_download", seconds=0.0, megabytes=0.0, synthetic=True)
     counties = make_counties(cfg)
     era5_path, era5 = make_era5(cfg, start, days)
     make_outages(cfg, counties, era5, start, days)

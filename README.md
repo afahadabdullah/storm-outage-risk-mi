@@ -1,182 +1,131 @@
-# Storm-Driven Outage Risk and Forecast Value
-## Michigan Distribution Network — Independent Project, 2026
+# Storm-Driven Outage Risk and Forecast Value — Michigan
 
-A comprehensive probabilistic outage-risk forecasting system for electric distribution networks, combining historical outage data with meteorological predictors to quantify storm impacts and forecast value.
+Probabilistic county-day model linking weather hazard to electricity
+distribution outage **consequence**, driven by real forecast ensembles, and
+converted into a decision-economic answer.
 
----
-
-## Project Overview
-
-This project develops an end-to-end probabilistic framework for predicting distribution-level outage risk driven by severe weather across Michigan's electric grid. By integrating customer-outage records from ORNL EAGLE-I with advanced meteorological and environmental data, the system delivers actionable probabilistic forecasts for operational decision-making.
-
----
-
-## Key Achievements
-
-- **24% CRPS improvement over climatological baseline** — Validated on held-out test year with storm-blocked cross-validation, demonstrating robust predictive performance across probabilistic skill metrics (CRPS, Brier, reliability, spread–skill).
-- **Comprehensive modeling** — Three-stage hurdle model (occurrence, magnitude, duration) trained on 2018–2023 data across 83 Michigan counties.
-- **High-resolution predictors** — Meteorological (ERA5 gust, precipitation, freezing rain, soil moisture) and land-cover (NLCD canopy exposure) data at granular spatial scales.
-- **Operational decision framework** — Cost–loss economic value and break-even analyses quantifying resilience benefits per dollar invested.
+> **Status: Phase 1 (five-day pipeline smoke test). No results yet.**
+> Phase 1 proves the plumbing: every join lands, every unit is what you think it
+> is, every array has the shape you expect, and data flows from raw CSV to a
+> dollar figure without manual intervention. The models fitted at this stage are
+> statistically meaningless — five days gives 20–60 events across one state —
+> and they are deleted at the handoff. No skill score, no coefficient and no
+> dollar figure in this repository refers to anything real until Phase 2's
+> validation stage has run against the held-out test year.
 
 ---
 
-## Technical Approach
+## Quickstart
 
-### Data Integration
-- **Outage records:** ORNL EAGLE-I customer-outage data across 83 Michigan counties (2018–2023)
-- **Meteorological:** ERA5 gridded reanalysis (gust, precipitation, freezing rain, soil moisture)
-- **Land cover:** NLCD canopy exposure and environmental covariates
-- **Forecasts:** Bias-corrected GEFS ensemble system (day-1 through day-5 lead times)
-
-### Methodology
-1. **Three-stage hurdle model:**
-   - **Stage 1:** Binary logistic regression for event occurrence
-   - **Stage 2:** Distributional gradient boosting for outage magnitude
-   - **Stage 3:** Weibull accelerated failure time (AFT) survival regression for restoration duration (right-censored)
-
-2. **Validation strategy:**
-   - Storm-blocked cross-validation preventing data leakage
-   - Probabilistic metrics: CRPS, Brier skill, reliability diagrams, spread–skill analysis
-   - Baseline comparisons: climatology and operational threshold-rule baselines
-
-3. **Uncertainty quantification:**
-   - Meteorological uncertainty: ensemble forecast spread
-   - Parametric uncertainty: model credible intervals
-   - Decomposition of total forecast uncertainty
-
-### Case Studies
-- Day-1 to day-5 probabilistic outage forecasts for two major 2023 weather events
-- Explicit separation of meteorological vs. model-based uncertainty sources
-
----
-
-## Model Performance
-
-| Metric | Performance | Baseline |
-|--------|-------------|----------|
-| **CRPS Improvement** | 24% over climatology | — |
-| **Brier Skill** | Validated on held-out year | Above climatology |
-| **Reliability** | Quantified in reliability diagrams | Well-calibrated |
-| **Spread–Skill** | Balanced ensemble spread | Robust correlation |
-
----
-
-## Operational Decision Value
-
-The framework quantifies resilience benefits through:
-- **Cost–loss relative economic value** — Trade-off between prevention/mitigation costs and avoided outage losses
-- **Break-even inspection cost analysis** — Optimal decision thresholds for pre-storm grid hardening and personnel positioning
-- **Risk reduction per dollar** — Transparent economic justification for resilience investments
-
----
-
-## Project Structure
-
-```
-storm-outage-risk-mi/
-├── README.md                              # This file
-├── Makefile                               # Build and workflow automation
-├── phase1-smoke-test-spec.md              # Phase 1 validation spec
-├── storm-outage-risk-project-spec.md      # Full project specification
-│
-├── config/                                # Configuration files
-│   ├── phase1.yaml                        # Phase 1 experiment config
-│   └── region.yaml                        # Regional/domain definitions
-│
-├── data/
-│   ├── raw/                               # Original EAGLE-I, ERA5, NLCD
-│   ├── interim/                           # Processed intermediate datasets
-│   └── processed/                         # Final modeling datasets
-│
-├── src/
-│   └── common/                            # Shared utilities and config loading
-│       ├── __init__.py
-│       ├── config.py                      # Configuration management
-│       ├── _bootstrap.py                  # Initialization utilities
-│
-├── notebooks/                             # Jupyter notebooks (EDA, results)
-├── models/                                # Trained model artifacts
-├── figures/                               # Output plots and visualizations
-├── logs/                                  # Experiment logs
-├── tests/                                 # Unit and integration tests
-│
-├── env/
-│   ├── environment.yml                    # Conda environment spec
-│   └── requirements.txt                   # pip requirements
-│
-└── .gitignore                             # Git exclusions
-```
-
----
-
-## Installation & Setup
-
-### Prerequisites
-- Python 3.10+
-- conda or pip
-
-### Environment Setup
-
-**Option 1: Conda**
 ```bash
-conda env create -f env/environment.yml
-conda activate storm-outage-risk
+conda env create -f env/environment.yml && conda activate storm-outage-risk
+make doctor                  # packages, ~/.cdsapirc, egress, disk
+make phase1-synthetic        # ~5 s, no credentials, no downloads
+make test
 ```
 
-**Option 2: pip**
+`phase1-synthetic` generates stand-in data with the same schemas, units and
+dtypes the real fetchers produce, then runs the entire pipeline through it. It
+exists so that plumbing bugs are found in seconds rather than after a three-hour
+CDS queue. Every number it produces is fictional.
+
+**Running on a remote box?** `docs/RUNBOOK.md` is the ordered version of what
+follows, with wait times, credentials, tmux and triage.
+
+### The real run
+
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r env/requirements.txt
+# The CDS queue is the only unpredictable wait in the project, and it cannot be
+# queued until the window is chosen, which needs the outage data first. That
+# constraint fixes the order below.
+make fetch                            # EAGLE-I annual CSV + MCC + TIGER counties
+python src/select_window.py --write   # pick the 5-day window FROM THE DATA
+nohup make era5-only &                # queue ERA5, then go do something else
+python src/02_fetch_weather.py --only gefs
+python src/02_fetch_weather.py --only canopy
+make phase1                           # raw -> decision number, one command
 ```
 
----
-
-## Quick Start
-
-1. **Load configuration:**
-   ```python
-   from src.common.config import load_config
-   config = load_config("config/phase1.yaml")
-   ```
-
-2. **Run phase 1 validation:**
-   ```bash
-   make validate-phase1
-   ```
-
-3. **Generate forecasts:**
-   - See `notebooks/` for example forecast workflows
-   - Day-1 through day-5 probabilistic predictions with uncertainty quantification
+`make phase1` writes **`docs/phase1_report.md`** — the section 7 go/no-go table
+and the section 8 measurements table, both filled in from the run. Phase 2 starts
+only when every criterion in that report says PASS.
 
 ---
 
-## Key References
+## Layout
 
-- **ORNL EAGLE-I:** Customer outage records  
-- **ERA5:** Copernicus Climate Data Store (Hersbach et al., 2020)
-- **GEFS:** NOAA Global Ensemble Forecast System  
-- **NLCD:** USGS National Land Cover Database
+```
+config/region.yaml       the only file to edit for a new region; frozen after day 2
+config/phase1.yaml       TEMPORARY overrides; `make phase1-diff` lists them all
+src/doctor.py            preflight for a fresh machine
+src/select_window.py     step 0  window chosen from data, not from memory
+src/01_fetch_outage.py   step 1  EAGLE-I + MCC denominator + TIGER counties
+src/02_fetch_weather.py  step 2  ERA5 (CDS), GEFS (AWS byte-range), NLCD canopy
+src/03_build_events.py   step 3  normalise, remove baseline, threshold -> events
+src/04_build_features.py step 4  ERA5 -> county-day, and the correlation gate
+src/05_fit_models.py     step 5  occurrence / magnitude / duration, all distributions
+src/06_compose_mc.py     step 6  Monte Carlo through all three stages
+src/07_forecast_cases.py step 7  GEFS, quantile-mapped, one lead time
+src/08_decision_value.py step 8  cost-loss value and break-even inspection cost
+src/common/geo.py        the cell-to-county weight matrix, built once, in EPSG:5070
+tests/                   the phase 1 assertions, promoted to a test module
+```
 
----
+Numbered scripts follow the project spec's file names, so they are executed
+rather than imported; anything shared between them lives in `src/common/`.
 
-## Results & Outputs
+## Design decisions worth knowing before reading the code
 
-- Probabilistic outage forecasts (day-1 to day-5)
-- Uncertainty decomposition (meteorological vs. parametric)
-- Economic value metrics for operational decision-making
-- Visualization of forecast performance and reliability
+**One time reference.** Everything is UTC, converted once at ingestion. A silent
+local/UTC mismatch shifts the storm four to five hours and quietly destroys the
+weather–outage correlation; the model just looks weak and you spend a day
+blaming the features.
 
----
+**Two aggregations, on purpose.** Smooth fields (precipitation, soil moisture,
+temperature) get an area-weighted county mean. Tail fields (gust, CAPE) get the
+max over intersecting cells. Damage is a tail phenomenon and a county-mean gust
+destroys the signal. Both matrices are built once, in the equal-area CRS — area
+maths in EPSG:4326 is wrong by a latitude-dependent factor that in a north–south
+state like Michigan is large enough to matter and small enough to look plausible.
 
-## Author
+**Everything outputs a distribution.** Occurrence, magnitude and duration are
+each sampled, never multiplied as point estimates. Composing medians produces
+output that looks entirely reasonable and carries no uncertainty at all, which is
+why `tests/` asserts per-row spread on the conditional draws.
 
-**Fahad Abdullaah**  
-George Mason University, 2026
+**Gate criterion 6 is the real gate.** `corr(gust_max, customer_hours) > 0.3` on
+the peak day. Criteria 1–5 and 7–10 test whether the code runs; 6 tests whether
+public county-level outage records carry a recoverable weather signal at all. If
+it fails while the rest pass, the problem is scientific, and the diagnostic order
+is: timezone alignment, then peak-day identity across the two datasets, then
+utility reporting coverage in the hardest-hit counties, then whether ERA5
+resolved this storm's gusts.
 
----
+## Phase 1 discipline
 
-## Questions or Feedback?
+1. **Do not interpret any Phase 1 result.** Not the AUC, not the hazard ratios,
+   not the break-even cost.
+2. **Do not tune anything.** Tuning on a smoke-test slice contaminates Phase 2
+   before it starts.
+3. **Do not keep any Phase 1 artifact.** `make clean-phase1` deletes the fitted
+   models and figures. Timing and volume measurements are the one thing that
+   carries forward.
+4. **Touch the test year exactly once**, at the end of Phase 2, after every model
+   and hyperparameter decision is frozen. If the results disappoint, report them
+   and diagnose why. Do not go back and tune.
 
-For questions about methodology, data, or results, please refer to the full project specification:  
-`storm-outage-risk-project-spec.md`
+## Limitations
+
+Stated up front, before anyone asks — the full list is in §11 of the project
+spec. The load-bearing ones: county aggregation hides network structure; EAGLE-I
+reports consequence, not cause, so this is **not** fragility modeling; canopy
+percentage is exposure, not vegetation-management condition; ERA5 under-resolves
+convective gusts at 0.25°; there are no asset age, material or inspection
+records; and restoration time confounds damage severity with crew logistics.
+
+## Data sources
+
+EAGLE-I county outage data (ORNL, figshare `10.6084/m9.figshare.24237376`);
+ERA5 via the Copernicus Climate Data Store; GEFS via `noaa-gefs-pds` on AWS;
+NLCD 2021 tree canopy (MRLC); TIGER/Line counties (US Census); ICE Calculator
+(LBNL/DOE) for interruption costs.

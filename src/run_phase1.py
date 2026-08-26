@@ -11,6 +11,7 @@ artifact -- Phase 2 starts only when every criterion in it says PASS.
 from __future__ import annotations
 
 import argparse
+import os
 import runpy
 import sys
 import time
@@ -27,7 +28,9 @@ from src.common.logio import get_logger, measurements_markdown, record
 
 log = get_logger("run_phase1")
 SRC = ROOT / "src"
-REPORT = ROOT / "docs" / "phase1_report.md"
+def report_path() -> Path:
+    ns = os.environ.get("STORM_DATA_NS", "").strip()
+    return ROOT / "docs" / (f"phase1_report{ns}.md" if ns else "phase1_report.md")
 
 STEPS = [
     ("03_build_events.py", "outage event table"),
@@ -65,8 +68,9 @@ def write_synthetic_config(phase1_path: Path, start: str, days: int) -> Path:
 def make_report(cfg, ok: bool, elapsed: float) -> Path:
     table, _ = criteria_report()
     overrides = sorted(yaml.safe_load(Path(cfg["_phase1_file"]).read_text()))
-    REPORT.parent.mkdir(exist_ok=True)
-    REPORT.write_text(f"""# Phase 1 report -- {cfg['region_name']}
+    report = report_path()
+    report.parent.mkdir(exist_ok=True)
+    report.write_text(f"""# Phase 1 report -- {cfg['region_name']}
 
 Generated {pd.Timestamp.utcnow():%Y-%m-%d %H:%M UTC} in {elapsed / 60:.1f} min.
 Window `{cfg.get('window_start')}` .. `{cfg.get('window_end')}` ({cfg['window_days']} days).
@@ -109,7 +113,7 @@ pipeline is small.
 - [ ] Confirm `region.yaml` splits are the frozen 2018-2021 / 2022 / 2023
       boundaries and that nothing in Phase 1 touched 2023.
 """)
-    return REPORT
+    return report
 
 
 def main() -> None:
@@ -120,12 +124,18 @@ def main() -> None:
     ap.add_argument("--report-only", action="store_true")
     args = ap.parse_args()
 
+    if args.synthetic:
+        # every synthetic artifact lives under a "_synthetic" namespace so it can
+        # never be mistaken for a cached real download
+        os.environ["STORM_DATA_NS"] = "_synthetic"
+
     if args.report_only:
         table, ok = criteria_report()
         print(table)
         print("\n" + measurements_markdown())
         sys.exit(0 if ok else 1)
 
+    PATHS.ensure()
     GateBook.reset()
     phase1_path = Path(args.phase1)
     t0 = time.perf_counter()
