@@ -82,5 +82,9 @@ ice:
   commercial_usd_per_cust_hr:   180.0
   mix_residential:              0.88
   mix_commercial:               0.12
+  # Asset-count proxy for the break-even denominator. The weakest assumption in
+  # section 9.2 and the one to name first when asked. With real network data
+  # this is a pole and span count, not a ratio.
+  customers_per_asset:          12
 cost_loss_ratios:   [0.01, 0.02, 0.05, 0.10, 0.20, 0.35, 0.50]
 hazard_reduction_deltas: [0.10, 0.20, 0.30]

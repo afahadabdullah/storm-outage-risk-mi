@@ -33,3 +33,4 @@ venv/
 
 # ---- OS ----
 .DS_Store
+config/_phase1_synthetic.yaml

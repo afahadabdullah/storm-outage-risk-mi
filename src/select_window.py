@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 
 from src.common.config import PATHS, base_parser, config_from_args
+from src.common.io_outage import normalize_outage_frame
 from src.common.logio import get_logger, record, timed
 
 log = get_logger("select_window")
@@ -98,12 +99,8 @@ def main() -> None:
     if not csv.exists():
         raise SystemExit(f"{csv} not found -- run `make fetch` first.")
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from importlib import import_module
-    normalize = import_module("src.common.io_outage").normalize_outage_frame
-
     with timed("window_selection", log):
-        df = normalize(pd.read_csv(csv, dtype={"fips_code": "string"}), cfg)
+        df = normalize_outage_frame(pd.read_csv(csv, dtype={"fips_code": "string"}), cfg)
         statewide = statewide_hourly(df)
         start, end, peak = pick_window(statewide, int(cfg["window_days"]))
 
