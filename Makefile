@@ -11,12 +11,15 @@ PY      ?= python
 export PYTHONNOUSERSITE := 1
 CFG     ?= config/region.yaml
 P1      ?= config/phase1.yaml
+P2      ?= config/phase2.yaml
 SRC      = src
 
 .DEFAULT_GOAL := help
 .PHONY: help env env-pip env-lock doctor window fetch weather events features models compose forecast \
         value phase1 phase1-synthetic phase1-diff gates gates-synthetic test lint \
-        clean-phase1 clean-synthetic era5-only
+        clean-phase1 clean-synthetic era5-only phase2-download phase2-download-outages \
+        phase2-download-era5 phase2-download-gefs phase2-download-canopy phase2-build \
+        phase2-train phase2 phase2-build-test phase2-test phase2-submit
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -84,3 +87,37 @@ clean-phase1: ## section 9.3: delete every contaminated phase 1 artifact
 clean-synthetic: ## remove the generated stand-in data entirely
 	rm -rf data/*/_synthetic models/_synthetic figures/_synthetic logs/_synthetic \
 	       config/_phase1_synthetic.yaml
+
+# ---- Phase 2: full 2018-2023 study (CPU only) -------------------------------
+phase2-download: ## all full-study inputs (large; prefer phase2-submit on Slurm)
+	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only all
+
+phase2-download-outages: ## EAGLE-I 2017 baseline buffer + 2018-2023 study years
+	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only outages
+
+phase2-download-era5: ## ERA5 monthly 2018-2023 (72 restartable requests)
+	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only era5
+
+phase2-download-gefs: ## 2023 cases, day-5/-3/-2/-1, 31 members
+	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only gefs
+
+phase2-download-canopy: ## required static USFS/NLCD canopy layer
+	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only canopy
+
+phase2-build: ## build 2018-2022 features; does not open 2023 outcomes
+	$(PY) src/phase2_build.py --config $(CFG) --phase2 $(P2) --through validation
+
+phase2-train: ## fit 2018-2021, calibrate and validate on 2022
+	$(PY) src/phase2_train.py --config $(CFG) --phase2 $(P2)
+
+phase2: ## preprocess + train/validate; downloads must already be cached
+	$(PY) src/run_phase2.py --config $(CFG) --phase2 $(P2)
+
+phase2-build-test: ## explicitly open/build held-out 2023 outcomes
+	$(PY) src/phase2_build.py --config $(CFG) --phase2 $(P2) --through test --acknowledge-test
+
+phase2-test: ## score frozen model on 2023 exactly once
+	$(PY) src/phase2_train.py --config $(CFG) --phase2 $(P2) --evaluate-test
+
+phase2-submit: ## submit CPU-only Slurm download -> build -> train chain
+	bash slurm/submit_phase2.sh

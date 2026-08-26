@@ -4,7 +4,8 @@ Probabilistic county-day model linking weather hazard to electricity
 distribution outage **consequence**, driven by real forecast ensembles, and
 converted into a decision-economic answer.
 
-> **Status: Phase 1 (five-day pipeline smoke test). No results yet.**
+> **Status: Phase 1 passed; the Phase 2 full-study workflow is ready to run. No
+> validated results yet.**
 > Phase 1 proves the plumbing: every join lands, every unit is what you think it
 > is, every array has the shape you expect, and data flows from raw CSV to a
 > dollar figure without manual intervention. The models fitted at this stage are
@@ -51,6 +52,19 @@ make phase1                           # raw -> decision number, one command
 and the section 8 measurements table, both filled in from the run. Phase 2 starts
 only when every criterion in that report says PASS.
 
+### Full Phase 2 run
+
+The full study is CPU-only and uses frozen 2018–2021 / 2022 / 2023 splits:
+
+```bash
+make phase2-submit       # downloads -> 2018-2022 build -> train/validate
+# Review validation and freeze all choices, then exactly once:
+sbatch slurm/phase2_final_test.sbatch
+```
+
+See [`docs/PHASE2_RUNBOOK.md`](docs/PHASE2_RUNBOOK.md) for outputs, restart
+commands, resource requests, and the test-year lock.
+
 ---
 
 ## Layout
@@ -58,6 +72,7 @@ only when every criterion in that report says PASS.
 ```
 config/region.yaml       the only file to edit for a new region; frozen after day 2
 config/phase1.yaml       TEMPORARY overrides; `make phase1-diff` lists them all
+config/phase2.yaml       full-study execution controls; frozen splits stay in region.yaml
 src/doctor.py            preflight for a fresh machine
 src/select_window.py     step 0  window chosen from data, not from memory
 src/01_fetch_outage.py   step 1  EAGLE-I + MCC denominator + TIGER counties
@@ -68,6 +83,10 @@ src/05_fit_models.py     step 5  occurrence / magnitude / duration, all distribu
 src/06_compose_mc.py     step 6  Monte Carlo through all three stages
 src/07_forecast_cases.py step 7  GEFS, quantile-mapped, one lead time
 src/08_decision_value.py step 8  cost-loss value and break-even inspection cost
+src/phase2_download.py   annual/monthly/case-study data acquisition
+src/phase2_build.py      rolling-baseline multi-year events and weather features
+src/phase2_train.py      frozen fit, calibration, blocked CV, and final test
+src/run_phase2.py        build + train/validate runner; never opens test year
 src/common/geo.py        the cell-to-county weight matrix, built once, in EPSG:5070
 tests/                   the phase 1 assertions, promoted to a test module
 ```

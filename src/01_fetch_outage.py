@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 """Step 1 -- EAGLE-I outage data, the MCC denominator, and TIGER counties.
 
-EAGLE-I 2014-2022 lives on figshare (doi 10.6084/m9.figshare.24237376) and is
-fetchable over the API. The 2023 and 2024 releases are ORNL Constellation
-datasets served through Globus, which has no anonymous HTTP endpoint -- for
-those you download by hand and drop the CSV in data/raw/. Phase 1 only needs a
-training-window year (2018-2021), so this is a Phase 2 problem, not a Phase 1 one.
+EAGLE-I 2014-2025 lives on figshare (doi 10.6084/m9.figshare.24237376) and is
+fetchable over the API. The article was extended after the original Phase 1
+run, so Phase 2 can fetch the frozen 2023 test year through the same endpoint.
 
 Cannot slice server-side: the annual CSV is a single file. Download the year,
 filter locally. Sub-GB, minutes.
@@ -59,10 +57,8 @@ MANUAL = """
 Could not reach figshare ({err}).
 
 Download by hand and put the files in data/raw/ :
-  EAGLE-I 2014-2022 : https://doi.org/10.6084/m9.figshare.24237376
+  EAGLE-I 2014-2025 : https://doi.org/10.6084/m9.figshare.24237376
       -> eaglei_outages_{year}.csv , MCC.csv , coverage_history.csv
-  EAGLE-I 2023      : https://doi.ccs.ornl.gov/dataset/2e1dac8d-800d-5e09-812e-8abf52f11e27  (Globus)
-  EAGLE-I 2024      : https://doi.ccs.ornl.gov/dataset/2be78213-ef9e-5433-b1b0-9762d051146c  (Globus)
 
 Then re-run this step; it will find the cached files and skip the download.
 """

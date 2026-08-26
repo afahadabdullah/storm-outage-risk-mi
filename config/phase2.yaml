@@ -1,0 +1,15 @@
+# Full-study settings.  Region choices and frozen temporal splits remain in
+# region.yaml; this file contains only execution controls.
+phase: 2
+baseline_method: rolling
+n_boost_rounds: 500
+n_mc_draws: 1000
+n_gefs_members: 31
+skip_isotonic: false
+magnitude_model: ngboost
+forecast_lead_days: [5, 3, 2, 1]
+forecast_parametric_draws: 100
+storm_gap_days: 2
+cv_n_estimators: 200
+cv_leave_one_county_out: true
+

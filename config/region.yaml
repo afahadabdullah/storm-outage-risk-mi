@@ -46,6 +46,7 @@ sources:
   tiger_year:              2023
   tiger_url:               "https://www2.census.gov/geo/tiger/TIGER{year}/COUNTY/tl_{year}_us_county.zip"
   nlcd_tcc_url:            "https://www.mrlc.gov/downloads/sciweb1/shared/mrlc/data/nlcd_tcc_conus_2021_v2021-4.zip"
+  nlcd_tcc_image_service:  "https://imagery.geoplatform.gov/iipp/rest/services/Vegetation/USFS_EDW_NLCD_TCC_CONUS/ImageServer"
   era5_dataset:            "reanalysis-era5-single-levels"
   cds_url:                 "https://cds.climate.copernicus.eu/api"
   gefs_bucket:             "noaa-gefs-pds"
