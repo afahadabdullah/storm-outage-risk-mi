@@ -124,6 +124,13 @@ python src/02_fetch_weather.py --only gefs      # ~20 min, byte-range subset
 python src/02_fetch_weather.py --only canopy    # ~15 min, large; optional
 ```
 
+The operational GEFS bucket is a short rolling archive. For the configured
+2019 Phase 1 window, the fetcher automatically falls back to NOAA's permanent
+GEFSv12 reforecast archive (five 00Z members; it has +24/+48/+72-hour gusts,
+not f000). This is deliberate and is sufficient for the Phase 1 forecast
+plumbing. Do not change the selected outage window just to chase operational
+files that no longer exist.
+
 Canopy is genuinely optional for Phase 1 — no gate criterion uses it, and the
 script degrades to NaN-filled canopy features with a warning. Do it now anyway
 if disk allows: it is static, Phase 2 reuses it unchanged, and getting it working
@@ -197,6 +204,8 @@ and the measurements table. Those five are the entire carry-forward.
 | a package loads from `~/.local/...` in a traceback | user site-packages shadowing the env | `export PYTHONNOUSERSITE=1` — the Makefile sets it; a bare `python src/...` does not |
 | `403` from CDS with no useful message | ERA5 licence not accepted | accept it once in the CDS web UI |
 | CDS request hangs "queued" for hours | normal at peak | it is unattended; do step 6's other work |
+| `no .idx` / `NoSuchKey` from `noaa-gefs-pds` for a historical date | operational GEFS has aged out | pull the current code and rerun `python src/02_fetch_weather.py --only gefs`; it falls back to NOAA's GEFSv12 reforecast archive for 2000–2019 |
+| NLCD canopy download returns 404 | MRLC moved the bulk ZIP | safe to skip in Phase 1; the canopy feature is NaN-filled as designed. Use the current MRLC/USFS download service before Phase 2 |
 | `no such table: gpkg_contents` | you reverted to `.gpkg` on a network mount | keep GeoParquet |
 | unmatched FIPS printed at step 3 | leading zeros, or a county boundary change | the list is printed in full — reconcile it, do not filter it away |
 | `frac_out > 1` | wrong MCC denominator or wrong year | check `MCC.csv` joined on 5-char FIPS |

@@ -50,6 +50,9 @@ sources:
   cds_url:                 "https://cds.climate.copernicus.eu/api"
   gefs_bucket:             "noaa-gefs-pds"
   gefs_product:            "pgrb2sp25"           # 0.25 deg primary fields, includes GUST
+  # Permanent historical fallback for Phase 1 dates through 2019. The
+  # operational bucket above is intentionally only a short rolling archive.
+  gefs_reforecast_bucket:  "noaa-gefs-retrospective"
 
 era5_variables:
   - "10m_u_component_of_wind"

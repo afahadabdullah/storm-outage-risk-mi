@@ -21,6 +21,7 @@ file, NLCD and TIGER have no temporal dimension at all.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -95,11 +96,93 @@ def fetch_era5(cfg, force: bool = False) -> Path:
 GEFS_KEY = "gefs.{date:%Y%m%d}/{cycle:02d}/atmos/{product}/{member}.t{cycle:02d}z.pgrb2s.0p25.f{fhr:03d}"
 GEFS_VARS = {"GUST": "gust", "APCP": "tp", "TMP": "t2m",
              "UGRD": "u10", "VGRD": "v10", "CAPE": "cape"}
+GEFS_REFORECAST_KEY = (
+    "GEFSv12/reforecast/{date:%Y}/{date:%Y%m%d}00/{member}/Days:1-10/"
+    "gust_sfc_{date:%Y%m%d}00_{member}.grib2"
+)
 
 
 def gefs_members(n: int) -> list[str]:
     """Control first, then perturbations. 1 + 30 = the full 31."""
     return (["gec00"] + [f"gep{i:02d}" for i in range(1, 31)])[:n]
+
+
+def reforecast_member(member: str) -> str:
+    """Map operational GEFS member labels onto the reforecast archive labels."""
+    return "c00" if member == "gec00" else f"p{member[-2:]}"
+
+
+def _forecast_ranges(idx_text: str, wanted_hours: list[int]) -> dict[int, tuple[int, int | None]]:
+    """Return byte ranges for selected forecast-hour messages in a single-var index."""
+    lines = [ln for ln in idx_text.splitlines() if ln.strip()]
+    offsets = [int(ln.split(":")[1]) for ln in lines]
+    out = {}
+    for i, line in enumerate(lines):
+        match = re.search(r"(\d+) hour fcst", line)
+        if not match:
+            continue
+        hour = int(match.group(1))
+        if hour in wanted_hours:
+            out[hour] = (offsets[i], offsets[i + 1] - 1 if i + 1 < len(offsets) else None)
+    return out
+
+
+def fetch_gefs_reforecast(cfg, init: pd.Timestamp, s3, force: bool = False) -> Path:
+    """Fetch historical GEFSv12 reforecast gusts when operational files aged out.
+
+    The NOAA operational bucket is a short rolling archive.  Its permanent
+    reforecast archive covers 2000--2019, has five daily 00Z members, and stores
+    each variable separately.  Phase 1 already uses five members, so write the
+    selected gust messages in the same one-member/one-lead GRIB layout that
+    ``07_forecast_cases.py`` reads from the operational source.
+    """
+    if init.year > 2019:
+        raise RuntimeError(
+            f"operational GEFS files for {init:%Y-%m-%d} have aged out, and the "
+            "NOAA GEFSv12 reforecast archive ends in 2019. Choose a 2018--2019 "
+            "Phase 1 window or provide an independent historical forecast archive."
+        )
+
+    out_dir = PATHS.raw / f"gefs_{init:%Y%m%d}00"
+    out_dir.mkdir(exist_ok=True)
+    bucket = cfg.get("sources", {}).get("gefs_reforecast_bucket", "noaa-gefs-retrospective")
+    requested = [int(h) for h in cfg.get("gefs_lead_hours", [24, 48, 72])]
+    n_members = int(cfg["n_gefs_members"])
+    if n_members > 5:
+        raise ValueError(
+            "the daily GEFSv12 reforecast has five members; set n_gefs_members "
+            "to 5 for a historical Phase 1 run"
+        )
+    # Reforecasts begin at +3 h; Phase 1 only needs the daily forecast fields.
+    wanted = [h for h in requested if h >= 3]
+    if len(wanted) != len(requested):
+        log.warning("GEFS reforecast has no f000; skipping it and using leads %s", wanted)
+
+    written = []
+    with timed("gefs_reforecast_download", log):
+        for member in gefs_members(n_members):
+            source_member = reforecast_member(member)
+            key = GEFS_REFORECAST_KEY.format(date=init, member=source_member)
+            idx = s3.get_object(Bucket=bucket, Key=key + ".idx")["Body"].read().decode()
+            ranges = _forecast_ranges(idx, wanted)
+            missing = sorted(set(wanted) - set(ranges))
+            if missing:
+                raise ValueError(f"GEFS reforecast {key} lacks forecast hours {missing}")
+            for fhr in wanted:
+                dest = out_dir / f"{member}_f{fhr:03d}.grib2"
+                if dest.exists() and not force:
+                    written.append(dest)
+                    continue
+                lo, hi = ranges[fhr]
+                blob = s3.get_object(
+                    Bucket=bucket, Key=key, Range=f"bytes={lo}-{'' if hi is None else hi}"
+                )["Body"].read()
+                dest.write_bytes(blob)
+                written.append(dest)
+    record("gefs_reforecast_download", megabytes=dir_size_mb(out_dir), files=len(written))
+    log.info("GEFS reforecast: %d gust files, %.1f MB -> %s",
+             len(written), dir_size_mb(out_dir), out_dir.name)
+    return out_dir
 
 
 def fetch_gefs(cfg, init: pd.Timestamp, cycle: int = 0, force: bool = False) -> Path:
@@ -135,10 +218,13 @@ def fetch_gefs(cfg, init: pd.Timestamp, cycle: int = 0, force: bool = False) -> 
                     idx = s3.get_object(Bucket=bucket, Key=key + ".idx")["Body"] \
                             .read().decode()
                 except Exception as err:                       # noqa: BLE001
-                    log.error("no .idx for s3://%s/%s (%s). GEFS on AWS starts "
-                              "in 2017 and older cycles are pruned.",
-                              bucket, key, type(err).__name__)
-                    raise
+                    code = getattr(err, "response", {}).get("Error", {}).get("Code")
+                    if code not in {"NoSuchKey", "404", "NotFound"}:
+                        raise
+                    log.warning("operational GEFS file has aged out: s3://%s/%s; "
+                                "using NOAA's permanent GEFSv12 reforecast archive",
+                                bucket, key)
+                    return fetch_gefs_reforecast(cfg, init, s3, force=force)
                 ranges = _idx_ranges(idx, GEFS_VARS)
                 blobs = []
                 for lo, hi in ranges:
