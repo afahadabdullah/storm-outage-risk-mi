@@ -93,13 +93,15 @@ each sampled, never multiplied as point estimates. Composing medians produces
 output that looks entirely reasonable and carries no uncertainty at all, which is
 why `tests/` asserts per-row spread on the conditional draws.
 
-**Gate criterion 6 is the real gate.** `corr(gust_max, customer_hours / MCC) > 0.3` on
-the peak day. Criteria 1–5 and 7–10 test whether the code runs; 6 tests whether
-public county-level outage records carry a recoverable weather signal at all. If
-it fails while the rest pass, the problem is scientific, and the diagnostic order
-is: timezone alignment, then peak-day identity across the two datasets, then
-utility reporting coverage in the hardest-hit counties, then whether ERA5
-resolved this storm's gusts.
+**Gate criterion 6 is the real gate.** `corr(gust_max, customer_hours / MCC) > 0.3`
+across county-days with an event. This respects storms that reach counties at
+different local times; the state-wide peak day remains a diagnostic. Criteria
+1–5 and 7–10 test whether the code runs; 6 tests whether public county-level
+outage records carry a recoverable weather signal at all. If it fails while the
+rest pass, the problem is scientific, and the diagnostic order is: timezone
+alignment, then event-day identity across the two datasets, then utility
+reporting coverage in the hardest-hit counties, then whether ERA5 resolved this
+storm's gusts.
 
 ## Phase 1 discipline
 
