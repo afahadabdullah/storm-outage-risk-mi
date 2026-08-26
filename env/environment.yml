@@ -1,0 +1,46 @@
+# Pinned. No unpinned versions. (project spec section 10.1)
+#   conda env create -f env/environment.yml   ||   mamba env create -f env/environment.yml
+name: storm-outage-risk
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip=24.2
+  # --- core -------------------------------------------------------------
+  - numpy=1.26.4
+  - pandas=2.2.2
+  - scipy=1.13.1
+  - pyarrow=16.1.0
+  - pyyaml=6.0.1
+  - tqdm=4.66.4
+  # --- geospatial -------------------------------------------------------
+  - geopandas=0.14.4
+  - shapely=2.0.4
+  - pyproj=3.6.1
+  - rasterio=1.3.10
+  - rioxarray=0.15.5
+  # --- weather / arrays -------------------------------------------------
+  - xarray=2024.6.0
+  - netcdf4=1.6.5
+  - dask=2024.6.2
+  - cfgrib=0.9.12.0
+  - eccodes=2.35.0
+  - h5netcdf=1.3.0
+  # --- models -----------------------------------------------------------
+  - scikit-learn=1.5.0
+  - lightgbm=4.4.0
+  - lifelines=0.28.0
+  - statsmodels=0.14.2
+  # --- figures ----------------------------------------------------------
+  - matplotlib-base=3.8.4
+  # --- cloud fetch ------------------------------------------------------
+  - boto3=1.34.131
+  - botocore=1.34.131
+  - requests=2.32.3
+  # --- dev --------------------------------------------------------------
+  - pytest=8.2.2
+  - ruff=0.5.0
+  - pip:
+      - cdsapi==0.7.7      # CDS API changed in 2024-25; >=0.7.7 required
+      - ngboost==0.5.1
+      - properscoring==0.1

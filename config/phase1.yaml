@@ -1,0 +1,42 @@
+# =============================================================================
+# phase1.yaml -- OVERRIDES region.yaml for the five-day smoke test.
+#
+# EVERY key here is temporary. Section 9 of the phase 1 spec requires diffing
+# this file against region.yaml line by line before Phase 2 starts.
+# `make phase1-diff` prints that diff.
+# =============================================================================
+phase:              1
+region_name:        "Michigan"
+state_fips:         ["26"]
+bbox:               [-90.5, 41.6, -82.3, 48.3]
+
+# Set by src/select_window.py -- do NOT type a date here from memory.
+window_start:       "AUTO"
+window_end:         "AUTO"
+window_days:        5
+window_source_year: 2019          # any year inside train window 2018-2021
+
+# ---- RELAXED so a 5-day slice yields non-empty tables (TEMPORARY) -----------
+event_frac_threshold:   0.002     # region.yaml: 0.005
+event_min_duration_hr:  1         # region.yaml: 2
+baseline_method:        "window_percentile"   # region.yaml: rolling 30-day
+
+# ---- Splits are meaningless here: they only prove the split code runs -------
+train_days:         3
+val_days:           1
+test_days:          1
+
+# ---- Models in degenerate mode ----------------------------------------------
+n_boost_rounds:     20            # region.yaml: 500
+n_mc_draws:         50            # region.yaml: 1000
+n_gefs_members:     5             # region.yaml: 31
+skip_isotonic:      true          # cannot calibrate on one day
+magnitude_model:    "lgbm_quantile"   # ngboost needs more rows than we have
+
+# ---- Phase 1 forecast: one lead time only -----------------------------------
+forecast_lead_days: 2
+gefs_lead_hours:    [0, 24, 48, 72]
+
+# ---- Gate 6 threshold (the real gate) ---------------------------------------
+min_hazard_consequence_corr: 0.30
+expected_event_count: [20, 60]

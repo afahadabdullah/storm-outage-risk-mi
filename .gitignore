@@ -1,0 +1,35 @@
+# ---- Planning / spec documents: local only, not part of the published repo ----
+phase1-smoke-test-spec.md
+storm-outage-risk-project-spec.md
+
+# ---- Data: never committed (document the schema in docs/, not the bytes) ----
+data/raw/*
+data/interim/*
+data/processed/*
+!data/*/.gitkeep
+
+# ---- Phase 1 artifacts: deliberately disposable (see phase1 spec section 9.3) ----
+models/*
+!models/.gitkeep
+figures/*
+!figures/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# ---- Secrets ----
+.cdsapirc
+.env
+*.netrc
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# ---- OS ----
+.DS_Store
