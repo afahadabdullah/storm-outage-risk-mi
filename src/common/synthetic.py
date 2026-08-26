@@ -56,7 +56,7 @@ def make_counties(cfg: Config):
                 "geometry": box(xs[i], ys[j], xs[i + 1], ys[j + 1]),
             })
     gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326")
-    gdf.to_file(out, driver="GPKG")
+    gdf.to_parquet(out)
     log.info("synthetic counties -> %s (%d)", out.name, len(gdf))
     return gdf
 

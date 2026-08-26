@@ -84,8 +84,9 @@ class GateBook:
 
     @staticmethod
     def reset() -> None:
-        if _GATE_FILE.exists():
-            Path(_GATE_FILE).unlink()
+        """Truncate rather than unlink: some sandboxes disallow deletes, and an
+        empty gate book is what the next run needs either way."""
+        _GATE_FILE.write_text("[]")
 
 
 def book(step: str) -> GateBook:

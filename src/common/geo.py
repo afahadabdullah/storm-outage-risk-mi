@@ -35,7 +35,9 @@ CELL_DEG = 0.25  # ERA5 single-levels native grid spacing
 # Counties
 # --------------------------------------------------------------------------- #
 def counties_path(cfg: Config) -> Path:
-    return PATHS.raw / f"tiger_counties_{cfg['sources']['tiger_year']}.gpkg"
+    # GeoParquet, not GeoPackage: no SQLite, no GDAL write driver, and it works
+    # on network and FUSE mounts where .gpkg writes fail with an opaque error.
+    return PATHS.raw / f"tiger_counties_{cfg['sources']['tiger_year']}.parquet"
 
 
 def fetch_counties(cfg: Config, force: bool = False) -> Path:
@@ -57,7 +59,7 @@ def fetch_counties(cfg: Config, force: bool = False) -> Path:
     gdf = gdf[gdf.STATEFP.isin(state_prefixes(cfg))].copy()
     gdf["GEOID"] = gdf.GEOID.astype(str).str.zfill(5)
     gdf = gdf[["GEOID", "NAME", "ALAND", "AWATER", "geometry"]]
-    gdf.to_file(out, driver="GPKG")
+    gdf.to_parquet(out)
     log.info("counties: %d written to %s", len(gdf), out.name)
     return out
 
@@ -66,7 +68,7 @@ def load_counties(cfg: Config):
     """Counties in the analysis (equal-area) CRS, GEOID-indexed, sorted."""
     import geopandas as gpd
 
-    gdf = gpd.read_file(counties_path(cfg))
+    gdf = gpd.read_parquet(counties_path(cfg))
     gdf["GEOID"] = gdf.GEOID.astype(str).str.zfill(5)
     gdf = gdf.sort_values("GEOID").set_index("GEOID")
     return gdf.to_crs(cfg["crs_analysis"])
