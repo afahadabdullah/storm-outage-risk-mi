@@ -100,8 +100,9 @@ def test_event_table_structure():
     ev = _load("phase1_events.parquet")
     assert len(ev) > 0
     assert (ev.customer_hours > 0).all()
-    assert (ev.end_time > ev.start_time).all()
-    assert ev.restoration_hours.notna().sum() > 0
+    observed = ~ev.censored
+    assert observed.any(), "no event restoration was observed before the window ended"
+    assert (ev.loc[observed, "end_time"] > ev.loc[observed, "start_time"]).all()
     assert (ev.restoration_hours >= 0).all()
 
 

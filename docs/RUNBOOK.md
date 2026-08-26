@@ -124,6 +124,13 @@ python src/02_fetch_weather.py --only gefs      # ~20 min, byte-range subset
 python src/02_fetch_weather.py --only canopy    # ~15 min, large; optional
 ```
 
+Before step 7, return to the pane that launched ERA5 and wait for the background
+job to finish (`jobs -l`, then `wait %1` if it is still job 1). Do not start
+`make phase1` merely because `data/raw/era5_*.nc` exists: an older checkout
+writes directly to that name while the download is still in progress. Current
+code downloads to `.nc.part`, validates it, and only then publishes the `.nc`
+cache atomically.
+
 The operational GEFS bucket is a short rolling archive. For the configured
 2019 Phase 1 window, the fetcher automatically falls back to NOAA's permanent
 GEFSv12 reforecast archive (five 00Z members; it has +24/+48/+72-hour gusts,
@@ -204,6 +211,7 @@ and the measurements table. Those five are the entire carry-forward.
 | a package loads from `~/.local/...` in a traceback | user site-packages shadowing the env | `export PYTHONNOUSERSITE=1` — the Makefile sets it; a bare `python src/...` does not |
 | `403` from CDS with no useful message | ERA5 licence not accepted | accept it once in the CDS web UI |
 | CDS request hangs "queued" for hours | normal at peak | it is unattended; do step 6's other work |
+| xarray says no installed backend matches `era5_*.nc` | Phase 1 opened ERA5 while the background download was incomplete (or the download is corrupt) | wait for `make era5-only` to finish; current code uses a validated `.nc.part` and atomic rename |
 | `no .idx` / `NoSuchKey` from `noaa-gefs-pds` for a historical date | operational GEFS has aged out | pull the current code and rerun `python src/02_fetch_weather.py --only gefs`; it falls back to NOAA's GEFSv12 reforecast archive for 2000–2019 |
 | NLCD canopy download returns 404 | MRLC moved the bulk ZIP | safe to skip in Phase 1; the canopy feature is NaN-filled as designed. Use the current MRLC/USFS download service before Phase 2 |
 | `no such table: gpkg_contents` | you reverted to `.gpkg` on a network mount | keep GeoParquet |

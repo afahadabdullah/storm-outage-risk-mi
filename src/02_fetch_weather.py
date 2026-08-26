@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 from src.common.config import PATHS, base_parser, config_from_args
-from src.common.era5_io import era5_path, open_era5  # noqa: F401
+from src.common.era5_io import era5_file_status, era5_path, open_era5  # noqa: F401
 from src.common.logio import dir_size_mb, get_logger, record, timed
 
 log = get_logger("02_weather")
@@ -56,9 +56,19 @@ CDS_TO_SHORT = {
 def fetch_era5(cfg, force: bool = False) -> Path:
     """Exactly 5 days x bbox x 12 variables. This is where the saving is."""
     out = era5_path(cfg)
+    tmp = out.with_suffix(out.suffix + ".part")
     if out.exists() and not force:
-        log.info("cached ERA5 %s (%.1f MB)", out.name, dir_size_mb(out))
-        return out
+        valid, reason = era5_file_status(out)
+        if valid:
+            log.info("cached ERA5 %s (%.1f MB)", out.name, dir_size_mb(out))
+            return out
+        log.warning("ignoring incomplete/invalid ERA5 cache %s (%s)", out.name, reason)
+    if tmp.exists():
+        raise SystemExit(
+            f"{tmp} exists: another ERA5 download may still be running. Check "
+            "`jobs -l` and `tail -f logs/era5.log`; after confirming no downloader "
+            "is active, move the stale .part file aside and retry."
+        )
     import cdsapi
 
     start = pd.Timestamp(cfg.required("window_start"))
@@ -80,7 +90,15 @@ def fetch_era5(cfg, force: bool = False) -> Path:
     log.info("this queues -- go do step 1, NLCD and TIGER while it runs")
     with timed("era5_download", log):
         cdsapi.Client(url=cfg["sources"]["cds_url"]).retrieve(
-            cfg["sources"]["era5_dataset"], request, str(out))
+            cfg["sources"]["era5_dataset"], request, str(tmp))
+    valid, reason = era5_file_status(tmp)
+    if not valid:
+        raise RuntimeError(
+            f"CDS download completed but {tmp} is not a readable NetCDF ({reason}). "
+            "Keep it for inspection; do not run Phase 1 with this file."
+        )
+    tmp.replace(out)
+    log.info("validated and published ERA5 cache -> %s", out.name)
     record("era5_download", megabytes=dir_size_mb(out))
 
     if len(request["month"]) > 1 or len(request["day"]) > 1:
