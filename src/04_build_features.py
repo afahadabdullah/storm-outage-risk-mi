@@ -168,14 +168,23 @@ def derived_features(cd: pd.DataFrame, cfg) -> pd.DataFrame:
 
 
 def _customer_density(cfg, land_km2) -> pd.Series:
+    counts = _customer_counts()
+    return (counts / land_km2.reindex(counts.index)).dropna()
+
+
+def _customer_counts() -> pd.Series:
+    """Latest covered-customer count by county, normalized to 5-char FIPS."""
     mcc_path = PATHS.raw / "MCC.csv"
     mcc = pd.read_csv(mcc_path, dtype=str)
     mcc.columns = [c.strip().lower() for c in mcc.columns]
     f = next(c for c in mcc.columns if "fips" in c)
     c = next(c for c in mcc.columns if "customer" in c)
+    year = next((col for col in mcc.columns if col in ("year", "mcc_year")), None)
+    if year:
+        mcc = mcc.sort_values(year).groupby(f, as_index=False).last()
     s = (mcc.assign(**{f: mcc[f].str.strip().str.zfill(5)})
             .set_index(f)[c].astype(float))
-    return (s / land_km2.reindex(s.index)).dropna()
+    return s
 
 
 def load_canopy_pct(cfg, fips_list) -> pd.Series:
@@ -251,6 +260,15 @@ def join_and_prove(cd, ev, cfg, gb) -> pd.DataFrame:
         log.warning("excluding %d counties with no EAGLE-I record from targets: %s",
                     len(excluded), excluded)
         merged = merged[merged.fips.astype(str).isin(reporting_fips)].copy()
+
+    # MCC is exposure, not an event attribute. Attach it to every reporting
+    # county-day; taking it only from the event merge leaves all no-event rows
+    # missing and later makes the asset-count denominator NaN.
+    merged["mcc"] = merged.fips.astype(str).map(_customer_counts())
+    gb.require("mcc_present_for_reporting_counties",
+               bool(merged.mcc.notna().all() and merged.mcc.gt(0).all()),
+               f"MCC present and positive for all {merged.fips.nunique()} "
+               "reporting counties")
 
     merged["event"] = merged.customer_hours.notna().astype(int)
     merged["customer_hours"] = merged.customer_hours.fillna(0.0)

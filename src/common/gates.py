@@ -20,9 +20,9 @@ def _gate_file():
 
 # Section 7 go/no-go table. Criterion 6 is the real gate.
 CRITERIA = {
-    1: "Every FIPS joins (zero unmatched on both sides)",
+    1: "Every observed outage FIPS joins TIGER (unreported counties excluded)",
     2: "Timezones aligned (outage peak within 1 h of ERA5 gust peak)",
-    3: "Event table non-empty (20-60 events, 3 verified by eye)",
+    3: "Event table non-empty and structurally valid (3 verified by eye)",
     4: "Units confirmed (m/s, metres, Kelvin asserted in code)",
     5: "Area weights valid (sum to 1.0 per county, equal-area CRS)",
     6: "HAZARD-CONSEQUENCE CORRELATION POSITIVE (event-day gust_max vs customer-hours/customer > 0.3)",
@@ -106,6 +106,10 @@ def criteria_report() -> tuple[str, bool]:
         if r.get("criterion"):
             by_crit.setdefault(r["criterion"], []).append(r)
 
+    def md_cell(value: object) -> str:
+        """Keep evidence text from corrupting the Markdown table."""
+        return str(value).replace("|", r"\|").replace("\n", "<br>")
+
     lines = ["| # | Criterion | Status | Evidence |", "|---|---|---|---|"]
     all_ok = True
     for num, text in CRITERIA.items():
@@ -117,10 +121,15 @@ def criteria_report() -> tuple[str, bool]:
             status = "PASS" if ok else "FAIL"
             evidence = "; ".join(r["detail"] for r in rs if r["detail"])[:180] or "--"
         all_ok &= ok
-        lines.append(f"| {num} | {text} | **{status}** | {evidence} |")
+        lines.append(
+            f"| {num} | {md_cell(text)} | **{status}** | {md_cell(evidence)} |")
 
-    failed = [r for r in recs if not r["passed"]]
+    failed = [r for r in recs if not r["passed"] and not r.get("warn")]
     if failed:
         lines += ["", "**Failed checks**", ""]
         lines += [f"- `{r['step']}` / {r['name']}: {r['detail']}" for r in failed]
+    warnings = [r for r in recs if not r["passed"] and r.get("warn")]
+    if warnings:
+        lines += ["", "**Warnings / observations (do not fail the run)**", ""]
+        lines += [f"- `{r['step']}` / {r['name']}: {r['detail']}" for r in warnings]
     return "\n".join(lines), all_ok

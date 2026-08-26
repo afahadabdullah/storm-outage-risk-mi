@@ -126,12 +126,13 @@ def main() -> None:
     deltas = [float(d) for d in cfg.get("hazard_reduction_deltas", [0.20])]
     delta = deltas[len(deltas) // 2]          # the middle scenario
     be = break_even(samples, df, cfg, delta)
+    costs = be.max_cost_per_asset_usd
+    invalid = ~np.isfinite(costs) | costs.lt(0)
     gb.require("break_even_finite_positive",
-               bool(np.isfinite(be.max_cost_per_asset_usd).all()
-                    and (be.max_cost_per_asset_usd >= 0).all()),
+               bool(not invalid.any()),
                f"max cost per asset in "
-               f"[{be.max_cost_per_asset_usd.min():,.2f}, "
-               f"{be.max_cost_per_asset_usd.max():,.2f}] USD at delta={delta}")
+               f"[{costs.min():,.2f}, {costs.max():,.2f}] USD at delta={delta}; "
+               f"{int(invalid.sum())} invalid of {len(costs)} counties")
 
     out = PATHS.processed / "phase1_decision_value.csv"
     be.to_csv(out)

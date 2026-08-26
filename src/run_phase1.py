@@ -75,10 +75,11 @@ def make_report(cfg, ok: bool, elapsed: float) -> Path:
 Generated {pd.Timestamp.utcnow():%Y-%m-%d %H:%M UTC} in {elapsed / 60:.1f} min.
 Window `{cfg.get('window_start')}` .. `{cfg.get('window_end')}` ({cfg['window_days']} days).
 
-**Nothing in this report is a result.** Five days gives 20-60 events across one
-state. No coefficient, AUC, CRPS or dollar figure below means anything. The only
-question this report answers is whether the code executes and the outputs have
-valid structure.
+**Nothing in this report is a result.** Five days gives too few independent
+storm observations for validation, regardless of the exact event count. No
+coefficient, AUC, CRPS or dollar figure below means anything. The only question
+this report answers is whether the code executes and the outputs have valid
+structure.
 
 ## Section 7 -- go / no-go
 

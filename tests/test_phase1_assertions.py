@@ -137,14 +137,19 @@ def test_event_table_structure():
     assert (ev.restoration_hours >= 0).all()
 
 
-def test_join_did_not_duplicate_or_drop():
+def test_join_did_not_duplicate_reporting_counties():
     cd = _load("phase1_county_day.parquet")
     merged = _load("phase1_merged.parquet")
-    assert len(merged) == len(cd)
+    hourly = _load("phase1_county_hourly.parquet")
+    reporting = set(hourly.fips.astype(str))
+    expected = cd[cd.fips.astype(str).isin(reporting)]
+    assert len(merged) == len(expected)
     assert merged.gust_max.notna().all()
+    assert merged.mcc.notna().all()
+    assert (merged.mcc > 0).all()
 
 
-def test_hazard_consequence_correlation_on_the_peak_day():
+def test_hazard_consequence_correlation_on_event_days():
     """Criterion 6 -- the premise, not the plumbing."""
     merged = _load("phase1_merged.parquet")
     event_days = merged[merged.event.eq(1)]

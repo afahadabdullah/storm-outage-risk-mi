@@ -8,7 +8,8 @@ converted into a decision-economic answer.
 > Phase 1 proves the plumbing: every join lands, every unit is what you think it
 > is, every array has the shape you expect, and data flows from raw CSV to a
 > dollar figure without manual intervention. The models fitted at this stage are
-> statistically meaningless — five days gives 20–60 events across one state —
+> statistically meaningless — five days gives too few independent storm
+> observations for validation, regardless of the exact event count —
 > and they are deleted at the handoff. No skill score, no coefficient and no
 > dollar figure in this repository refers to anything real until Phase 2's
 > validation stage has run against the held-out test year.
