@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 import sys
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -31,7 +32,8 @@ import numpy as np
 import pandas as pd
 
 from src.common.config import PATHS, base_parser, config_from_args
-from src.common.era5_io import era5_file_status, era5_path, open_era5  # noqa: F401
+from src.common.era5_io import (era5_file_status, era5_path, open_era5,
+                                publish_era5_download)  # noqa: F401
 from src.common.logio import dir_size_mb, get_logger, record, timed
 
 log = get_logger("02_weather")
@@ -62,6 +64,10 @@ def fetch_era5(cfg, force: bool = False) -> Path:
         if valid:
             log.info("cached ERA5 %s (%.1f MB)", out.name, dir_size_mb(out))
             return out
+        if zipfile.is_zipfile(out):
+            kind = publish_era5_download(out, out)
+            log.info("normalized cached CDS %s response -> %s", kind, out.name)
+            return out
         log.warning("ignoring incomplete/invalid ERA5 cache %s (%s)", out.name, reason)
     if tmp.exists():
         raise SystemExit(
@@ -91,14 +97,9 @@ def fetch_era5(cfg, force: bool = False) -> Path:
     with timed("era5_download", log):
         cdsapi.Client(url=cfg["sources"]["cds_url"]).retrieve(
             cfg["sources"]["era5_dataset"], request, str(tmp))
-    valid, reason = era5_file_status(tmp)
-    if not valid:
-        raise RuntimeError(
-            f"CDS download completed but {tmp} is not a readable NetCDF ({reason}). "
-            "Keep it for inspection; do not run Phase 1 with this file."
-        )
-    tmp.replace(out)
-    log.info("validated and published ERA5 cache -> %s", out.name)
+    kind = publish_era5_download(tmp, out)
+    log.info("validated CDS %s response and published ERA5 cache -> %s",
+             kind, out.name)
     record("era5_download", megabytes=dir_size_mb(out))
 
     if len(request["month"]) > 1 or len(request["day"]) > 1:

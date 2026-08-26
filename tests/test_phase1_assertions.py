@@ -9,6 +9,8 @@ suite is safe to run on a clean checkout and meaningful right after a run.
 """
 from __future__ import annotations
 
+import zipfile
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -72,6 +74,35 @@ def test_quantile_mapping_moves_the_mean_toward_the_reference():
     fcst = ref * 1.3 + 2.0
     mapped = qmap(fcst, ref)
     assert abs(mapped.mean() - ref.mean()) < abs(fcst.mean() - ref.mean())
+
+
+def test_zipped_cds_response_is_merged_to_netcdf(tmp_path):
+    """CDS may zip instant and accumulated variables despite `unarchived`."""
+    import xarray as xr
+    from src.common.era5_io import era5_file_status, publish_era5_download
+
+    coords = {"valid_time": pd.date_range("2019-07-19", periods=2, freq="1h"),
+              "latitude": [42.0], "longitude": [-84.0]}
+    instant = xr.Dataset(
+        {"i10fg": (("valid_time", "latitude", "longitude"),
+                    np.ones((2, 1, 1), dtype=np.float32))}, coords=coords)
+    accum = xr.Dataset(
+        {"tp": (("valid_time", "latitude", "longitude"),
+                np.zeros((2, 1, 1), dtype=np.float32))}, coords=coords)
+    instant_path, accum_path = tmp_path / "instant.nc", tmp_path / "accum.nc"
+    instant.to_netcdf(instant_path)
+    accum.to_netcdf(accum_path)
+    archive_path, out = tmp_path / "download.nc.part", tmp_path / "era5.nc"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.write(instant_path, "data_stream-oper_stepType-instant.nc")
+        archive.write(accum_path, "data_stream-oper_stepType-accum.nc")
+
+    kind = publish_era5_download(archive_path, out)
+
+    assert kind == "zip (2 NetCDF members merged)"
+    assert era5_file_status(out) == (True, "ok")
+    with xr.open_dataset(out) as merged:
+        assert set(merged.data_vars) == {"i10fg", "tp"}
 
 
 def test_magnitude_sampler_produces_spread_not_medians():
