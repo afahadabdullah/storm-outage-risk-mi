@@ -265,12 +265,32 @@ def join_and_prove(cd, ev, cfg, gb) -> pd.DataFrame:
     storm = merged[merged.date == peak_date]
     raw_corr = float(storm[["gust_max", "customer_hours"]].corr().iloc[0, 1])
     corr = float(storm[["gust_max", "customer_hours_per_customer"]].corr().iloc[0, 1])
+    # The main gate remains a pre-specified, same-day cross-sectional test.
+    # These diagnostics distinguish a staggered storm from a genuinely
+    # unresolved ERA5 hazard field without selecting the best result as a gate.
+    event_days = merged[merged.event.eq(1)]
+    event_day_corr = float(event_days[["gust_max", "customer_hours_per_customer"]]
+                           .corr().iloc[0, 1])
+    daily_corr = (merged.groupby("date")
+                  .apply(lambda g: g[["gust_max", "customer_hours_per_customer"]]
+                         .corr().iloc[0, 1], include_groups=False))
+    best_day = daily_corr.idxmax()
+    best_day_corr = float(daily_corr.loc[best_day])
     thr = float(cfg.get("min_hazard_consequence_corr", 0.30))
     gb.note("raw_customer_hours_correlation",
             f"raw total customer-hours correlation = {raw_corr:.3f} (exposure-confounded)")
+    gb.note("event_day_hazard_correlation",
+            f"event-day corr(gust_max, customer-hours/customer) = {event_day_corr:.3f} "
+            f"across {len(event_days)} county-days (diagnostic only)")
+    gb.note("best_daily_hazard_correlation",
+            f"best daily corr = {best_day_corr:.3f} on {pd.Timestamp(best_day).date()} "
+            "(diagnostic only; not selected as the gate)")
     log.info("PEAK DAY %s: corr(gust_max, customer-hours/customer) = %.3f "
              "[raw customer-hours %.3f] over %d reporting counties",
              peak_date.date(), corr, raw_corr, len(storm))
+    log.info("diagnostic: event-day correlation %.3f; strongest daily correlation "
+             "%.3f on %s", event_day_corr, best_day_corr,
+             pd.Timestamp(best_day).date())
     gb.require(
         "hazard_consequence_correlation", corr > thr,
         f"corr={corr:.3f} for gust_max vs customer-hours/customer on "
