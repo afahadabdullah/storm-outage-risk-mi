@@ -25,7 +25,7 @@ CRITERIA = {
     3: "Event table non-empty (20-60 events, 3 verified by eye)",
     4: "Units confirmed (m/s, metres, Kelvin asserted in code)",
     5: "Area weights valid (sum to 1.0 per county, equal-area CRS)",
-    6: "HAZARD-CONSEQUENCE CORRELATION POSITIVE (gust_max vs customer_hours > 0.3)",
+    6: "HAZARD-CONSEQUENCE CORRELATION POSITIVE (gust_max vs customer-hours/customer > 0.3)",
     7: "All three model stages execute (no exceptions, valid shapes, no NaNs)",
     8: "Monte Carlo produces spread (per-row std > 0)",
     9: "Bias correction active (mapped GEFS mean shifts toward ERA5 climatology)",

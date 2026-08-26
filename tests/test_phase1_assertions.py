@@ -149,7 +149,7 @@ def test_hazard_consequence_correlation_on_the_peak_day():
     merged = _load("phase1_merged.parquet")
     peak_date = merged.loc[merged.customer_hours.idxmax(), "date"]
     storm = merged[merged.date == peak_date]
-    corr = storm[["gust_max", "customer_hours"]].corr().iloc[0, 1]
+    corr = storm[["gust_max", "customer_hours_per_customer"]].corr().iloc[0, 1]
     assert corr > float(CFG.get("min_hazard_consequence_corr", 0.3)), (
         f"corr={corr:.3f}. Diagnose in this order: timezone alignment, whether "
         "the peak day is the storm day in both datasets, utility reporting "

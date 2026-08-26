@@ -40,7 +40,8 @@ log = get_logger("05_models")
 MERGED_PATH = PATHS.processed / "phase1_merged.parquet"
 
 TARGETS = {"event", "customer_hours", "restoration_hours", "peak_frac_out",
-           "peak_customers_out", "n_events", "censored", "concurrent_state_load"}
+           "peak_customers_out", "n_events", "censored", "concurrent_state_load",
+           "mcc", "customer_hours_per_customer"}
 IDS = {"fips", "date", "regime_label", "month"}
 
 

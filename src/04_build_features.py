@@ -34,6 +34,7 @@ from src.common.logio import get_logger, record, timed
 log = get_logger("04_features")
 FEATURES_PATH = PATHS.processed / "phase1_county_day.parquet"
 MERGED_PATH = PATHS.processed / "phase1_merged.parquet"
+HOURLY_PATH = PATHS.processed / "phase1_county_hourly.parquet"
 
 KELVIN = 273.15
 
@@ -226,6 +227,7 @@ def join_and_prove(cd, ev, cfg, gb) -> pd.DataFrame:
         peak_frac_out=("peak_frac_out", "max"),
         peak_customers_out=("peak_customers_out", "max"),
         concurrent_state_load=("concurrent_state_load", "max"),
+        mcc=("mcc", "first"),
         censored=("censored", "any"),
         n_events=("event_id", "size"),
     ).reset_index()
@@ -235,20 +237,45 @@ def join_and_prove(cd, ev, cfg, gb) -> pd.DataFrame:
                f"{len(merged)} rows out, {len(cd)} in")
     gb.require("weather_present_for_all_rows", bool(merged.gust_max.notna().all()),
                "weather missing for some county-days")
+
+    # A county absent from EAGLE-I altogether has an unknown outcome, not a
+    # confirmed zero-outage outcome.  Exclude it from target construction and
+    # name it in the gate report; criterion 1 remains responsible for deciding
+    # whether that coverage gap is acceptable for this study.
+    hourly = pd.read_parquet(HOURLY_PATH)
+    reporting_fips = set(hourly.fips.astype(str))
+    excluded = sorted(set(merged.fips.astype(str)) - reporting_fips)
+    if excluded:
+        gb.note("nonreporting_counties_excluded_from_targets",
+                f"{len(excluded)} counties with no EAGLE-I record excluded: {excluded}")
+        log.warning("excluding %d counties with no EAGLE-I record from targets: %s",
+                    len(excluded), excluded)
+        merged = merged[merged.fips.astype(str).isin(reporting_fips)].copy()
+
     merged["event"] = merged.customer_hours.notna().astype(int)
     merged["customer_hours"] = merged.customer_hours.fillna(0.0)
+    # Total customer-hours is exposure-dependent: a large county can appear
+    # consequential even when a much smaller share of its customers is out.
+    # The premise gate therefore uses outage-hours per covered customer.
+    merged["customer_hours_per_customer"] = (
+        merged.customer_hours / merged.mcc).replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
     # ---- criterion 6: THE REAL GATE ----------------------------------------
     peak_date = merged.loc[merged.customer_hours.idxmax(), "date"]
     storm = merged[merged.date == peak_date]
-    corr = float(storm[["gust_max", "customer_hours"]].corr().iloc[0, 1])
+    raw_corr = float(storm[["gust_max", "customer_hours"]].corr().iloc[0, 1])
+    corr = float(storm[["gust_max", "customer_hours_per_customer"]].corr().iloc[0, 1])
     thr = float(cfg.get("min_hazard_consequence_corr", 0.30))
-    log.info("PEAK DAY %s: corr(gust_max, customer_hours) = %.3f over %d counties",
-             peak_date.date(), corr, len(storm))
+    gb.note("raw_customer_hours_correlation",
+            f"raw total customer-hours correlation = {raw_corr:.3f} (exposure-confounded)")
+    log.info("PEAK DAY %s: corr(gust_max, customer-hours/customer) = %.3f "
+             "[raw customer-hours %.3f] over %d reporting counties",
+             peak_date.date(), corr, raw_corr, len(storm))
     gb.require(
         "hazard_consequence_correlation", corr > thr,
-        f"corr={corr:.3f} on {peak_date.date()} across {len(storm)} counties "
-        f"(gate: >{thr})",
+        f"corr={corr:.3f} for gust_max vs customer-hours/customer on "
+        f"{peak_date.date()} across {len(storm)} reporting counties "
+        f"(raw customer-hours corr={raw_corr:.3f}; gate: >{thr})",
         criterion=6,
         on_fail="If criteria 1-5 passed, the problem is SCIENTIFIC, not "
                 "mechanical. Diagnose in this order: (1) timezone alignment, "
