@@ -146,9 +146,13 @@ def hourly_frac(df, mcc, cfg, gb) -> pd.DataFrame:
     hourly["baseline"] = base.fillna(0.0)
     hourly["frac_excess"] = (hourly.frac_out - hourly.baseline).clip(lower=0)
 
-    med = hourly.frac_out.quantile(0.5)
-    gb.check("baseline_is_a_floor", bool((hourly.baseline <= med).all()),
-             f"max baseline {hourly.baseline.max():.5f} vs median frac_out {med:.5f}")
+    # A county's outage fraction is not comparable with the statewide row
+    # median: the latter is dominated by zeroes from other counties.  The
+    # window-percentile baseline is a floor only relative to the same county.
+    county_median = hourly.groupby("fips").frac_out.transform("median")
+    gb.check("baseline_is_a_floor", bool((hourly.baseline <= county_median).all()),
+             "baseline <= its own county median for every county "
+             f"(max baseline {hourly.baseline.max():.5f})")
     return hourly
 
 
@@ -219,11 +223,18 @@ def detect_events(hourly, cfg, gb) -> pd.DataFrame:
                        "threshold is still too high. Restart at spec section 3.")
     gb.require("customer_hours_positive", bool(ev.customer_hours.gt(0).all()),
                f"min customer_hours = {ev.customer_hours.min():,.1f}", criterion=3)
-    gb.require("end_after_start", bool((ev.end_time > ev.start_time).all()),
-               "every event ends after it starts", criterion=3)
-    gb.require("some_restorations_observed",
-               int(ev.restoration_hours.notna().sum()) > 0,
-               f"{int((~ev.censored).sum())} of {len(ev)} events uncensored",
+    # A right-censored event that begins in the last observed hour has no
+    # observed restoration interval.  Its end is the window boundary, which
+    # can equal its start; only observed restorations must be strictly ordered.
+    observed = ~ev.censored
+    gb.require("end_after_start", bool((ev.loc[observed, "end_time"]
+                                         > ev.loc[observed, "start_time"]).all()),
+               f"every observed restoration ends after it starts; "
+               f"{int(ev.censored.sum())} right-censored events may end at the "
+               "window boundary", criterion=3)
+    n_observed = int((~ev.censored).sum())
+    gb.require("some_restorations_observed", n_observed > 0,
+               f"{n_observed} of {len(ev)} events uncensored",
                criterion=3)
     gb.check("event_count_in_expected_range", lo <= len(ev) <= hi,
              f"{len(ev)} events (expected {lo}-{hi}; thousands means baseline "

@@ -16,9 +16,11 @@ window_end:         "AUTO"
 window_days:        5
 window_source_year: 2019          # any year inside train window 2018-2021
 
-# ---- RELAXED so a 5-day slice yields non-empty tables (TEMPORARY) -----------
-event_frac_threshold:   0.002     # region.yaml: 0.005
-event_min_duration_hr:  1         # region.yaml: 2
+# ---- Same event definition as the frozen regional configuration -------------
+# The earlier 0.2% / one-hour smoke-test relaxation over-detected short routine
+# outages in the selected real-data window.
+event_frac_threshold:   0.005
+event_min_duration_hr:  2
 baseline_method:        "window_percentile"   # region.yaml: rolling 30-day
 
 # ---- Splits are meaningless here: they only prove the split code runs -------
