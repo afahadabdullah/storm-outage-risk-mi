@@ -61,11 +61,26 @@ def load_gefs(cfg):
         name = "gust" if "gust" in ds else next(iter(ds.data_vars))
         mem.setdefault(member, []).append(
             ds[name].expand_dims(time=[int(fhr)]).rename("gust"))
-    arrs = [xr.concat(sorted(v, key=lambda a: int(a.time[0])), dim="time")
+    arrs = [xr.concat(sorted(v, key=lambda a: int(a.time[0])), dim="time",
+                      coords="minimal", compat="override")
             for v in mem.values()]
     out = xr.concat(arrs, dim="member").to_dataset(name="gust")
-    return out.rename({k: v for k, v in
-                       {"latitude": "lat", "longitude": "lon"}.items() if k in out})
+    out = out.rename({k: v for k, v in
+                      {"latitude": "lat", "longitude": "lon"}.items() if k in out})
+
+    # The permanent GEFS reforecast uses 0--360 degree longitude.  Convert it
+    # before subsetting so Michigan's negative-longitude bbox selects a compact
+    # 0.25-degree tile instead of passing the entire global grid to geopandas.
+    if float(out.lon.max()) > 180:
+        out = out.assign_coords(lon=((out.lon + 180) % 360) - 180).sortby("lon")
+    w, s, e, n = cfg["bbox"]
+    lat_slice = slice(n, s) if float(out.lat[0]) > float(out.lat[-1]) else slice(s, n)
+    out = out.sel(lat=lat_slice, lon=slice(w, e))
+    if out.sizes.get("lat", 0) == 0 or out.sizes.get("lon", 0) == 0:
+        raise ValueError(f"GEFS bbox {cfg['bbox']} selected no grid cells")
+    log.info("GEFS subset: %d members x %d leads x %d lat x %d lon",
+             out.sizes["member"], out.sizes["time"], out.sizes["lat"], out.sizes["lon"])
+    return out
 
 
 def quantile_map(fcst: np.ndarray, ref: np.ndarray, n_q: int = 51) -> np.ndarray:

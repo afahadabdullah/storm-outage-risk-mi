@@ -110,13 +110,16 @@ def build_weight_matrix(cfg: Config, lats, lons, force: bool = False):
     shape = (len(lats), len(lons))
     if cache.exists() and not force:
         z = np.load(cache, allow_pickle=True)
-        if tuple(z["grid_shape"]) == shape:
+        same_coords = ("lats" in z.files and "lons" in z.files
+                       and np.allclose(z["lats"], lats) and np.allclose(z["lons"], lons))
+        if tuple(z["grid_shape"]) == shape and same_coords:
             W = sparse.csr_matrix((z["w_data"], z["w_indices"], z["w_indptr"]),
                                   shape=tuple(z["w_shape"]))
             M = sparse.csr_matrix((z["m_data"], z["m_indices"], z["m_indptr"]),
                                   shape=tuple(z["m_shape"]))
             return W, M, [str(g) for g in z["geoids"]], shape
-        log.warning("cached weight matrix has grid %s, need %s -- rebuilding",
+        log.warning("cached weight matrix does not match requested coordinates "
+                    "(cached shape %s, requested %s) -- rebuilding",
                     tuple(z["grid_shape"]), shape)
 
     counties = load_counties(cfg)
@@ -152,6 +155,7 @@ def build_weight_matrix(cfg: Config, lats, lons, force: bool = False):
         w_data=W.data, w_indices=W.indices, w_indptr=W.indptr, w_shape=W.shape,
         m_data=M.data, m_indices=M.indices, m_indptr=M.indptr, m_shape=M.shape,
         geoids=np.array(geoids), grid_shape=np.array(shape),
+        lats=np.asarray(lats), lons=np.asarray(lons),
     )
     log.info("weight matrix cached -> %s", cache.name)
     return W.tocsr(), M.tocsr(), geoids, shape
