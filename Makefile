@@ -4,6 +4,11 @@
 #   make phase1             full pipeline on real data (needs ~/.cdsapirc)
 # =============================================================================
 PY      ?= python
+
+# On shared machines ~/.local/lib/pythonX.Y/site-packages shadows the conda env
+# and you silently run a DIFFERENT scipy/numpy than the one you installed. That
+# is how a pinned environment produces an unpinned failure.
+export PYTHONNOUSERSITE := 1
 CFG     ?= config/region.yaml
 P1      ?= config/phase1.yaml
 SRC      = src

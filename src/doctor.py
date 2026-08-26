@@ -58,16 +58,46 @@ def main() -> int:
 
     print("\nrequired packages")
     import importlib.util as iu
+    prefix = Path(sys.prefix).resolve()
+    strays = []
     for m in REQUIRED:
-        if iu.find_spec(m):
-            line(OK, m)
-        else:
+        spec = iu.find_spec(m)
+        if spec is None:
             failures += 1
             line(BAD, m, "conda env create -f env/environment.yml")
+            continue
+        origin = Path(spec.origin).resolve() if spec.origin else None
+        # A package resolved from ~/.local means user site-packages is shadowing
+        # the environment: you are running a different version than you pinned.
+        if origin and not str(origin).startswith(str(prefix)):
+            strays.append((m, origin))
+            line(BAD, m, f"loaded from {origin.parent.parent} -- NOT this env")
+            failures += 1
+        else:
+            line(OK, m)
+    if strays:
+        line(BAD, "user site-packages is shadowing the env",
+             "export PYTHONNOUSERSITE=1  (the Makefile sets this; a bare "
+             "`python src/...` outside make does not)")
 
     print("\noptional packages")
     for m, why in OPTIONAL.items():
         line(OK if iu.find_spec(m) else WARN, m, "" if iu.find_spec(m) else why)
+
+    print("\nknown incompatibilities")
+    try:
+        import scipy, lifelines
+        sv = tuple(int(x) for x in scipy.__version__.split(".")[:2])
+        lv = tuple(int(x) for x in lifelines.__version__.split(".")[:2])
+        bad = sv >= (1, 14) and lv < (0, 29)
+        if bad:
+            failures += 1
+        line(BAD if bad else OK,
+             f"scipy {scipy.__version__} + lifelines {lifelines.__version__}",
+             "lifelines < 0.29 calls scipy.integrate.trapz, removed in scipy "
+             "1.14. Upgrade lifelines to 0.30.3." if bad else "")
+    except Exception as err:                                    # noqa: BLE001
+        line(WARN, "scipy/lifelines pairing", f"could not check ({err})")
 
     print("\ncredentials")
     rc = Path.home() / ".cdsapirc"

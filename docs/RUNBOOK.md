@@ -73,7 +73,22 @@ say "licence" if you skip it.
 
 ```bash
 tmux new -s storm          # detach with ctrl-b d, reattach with `tmux a -t storm`
+export PYTHONNOUSERSITE=1  # keep ~/.local out of the env (see triage table)
 ```
+
+### On a shared cluster
+
+Put the data on scratch, not in `$HOME` — the EAGLE-I year plus the NLCD CONUS
+tile run 5–15 GB and home quotas are small:
+
+```bash
+mkdir -p /path/to/nobackup/storm-data/{raw,interim,processed}
+rmdir data/raw data/interim data/processed && ln -s /path/to/nobackup/storm-data data
+```
+
+Downloads and the CDS wait are fine on a login node — they are idle I/O. **Run
+`make phase1` through the batch scheduler**, not on the login node: reapers kill
+long processes and you lose the run partway through a parquet write.
 
 Everything from here runs inside that. The CDS queue has been known to run hours.
 
@@ -177,6 +192,9 @@ and the measurements table. Those five are the entire carry-forward.
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| `PackagesNotFoundError: lifelines=...` | not on conda-forge | it is in the `pip:` section now; `git pull` |
+| `cannot import name 'trapz' from 'scipy.integrate'` | lifelines < 0.29 with scipy >= 1.14 | `pip install -U lifelines==0.30.3` |
+| a package loads from `~/.local/...` in a traceback | user site-packages shadowing the env | `export PYTHONNOUSERSITE=1` — the Makefile sets it; a bare `python src/...` does not |
 | `403` from CDS with no useful message | ERA5 licence not accepted | accept it once in the CDS web UI |
 | CDS request hangs "queued" for hours | normal at peak | it is unattended; do step 6's other work |
 | `no such table: gpkg_contents` | you reverted to `.gpkg` on a network mount | keep GeoParquet |

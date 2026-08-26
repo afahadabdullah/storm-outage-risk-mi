@@ -23,7 +23,7 @@ dependencies:
   # --- core -------------------------------------------------------------
   - numpy>=1.26,<2.1
   - pandas>=2.2,<2.3
-  - scipy>=1.13,<1.15
+  - scipy>=1.13,<1.16
   - pyarrow>=16
   - pyyaml>=6
   - tqdm>=4.66
@@ -56,7 +56,9 @@ dependencies:
   - ruff>=0.5
   - pip:
       # not on conda-forge at a usable version -- exact pins, verified on PyPI
-      - lifelines==0.28.0     # Weibull AFT, Cox, Schoenfeld residuals
+      # 0.28.0 calls scipy.integrate.trapz, removed in scipy 1.14. Verified
+      # against scipy 1.14.1 and 1.15.3 (AFT, Cox and Schoenfeld all run).
+      - lifelines==0.30.3     # Weibull AFT, Cox, Schoenfeld residuals
       - ngboost==0.5.1        # magnitude model, Phase 2 primary
       - cdsapi==0.7.7         # CDS API changed in 2024-25; >=0.7.7 required
       - properscoring==0.1    # CRPS, Phase 2 validation
