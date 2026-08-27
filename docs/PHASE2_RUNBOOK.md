@@ -131,7 +131,13 @@ ARCO requires `zarr`, `fsspec`, and `aiohttp`. For an existing pip environment:
 
 ```bash
 /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python -m pip \
-  install 'zarr==2.18.7' 'fsspec==2024.6.1' 'aiohttp==3.10.11'
+  install 'zarr==2.18.7' 'fsspec==2025.7.0' 'aiohttp==3.10.11' \
+  'decorator==5.2.1'
+
+Run `python -m pip check` with the same interpreter after updating an existing
+environment. `fsspec` is pinned to 2025.7.0 because that exact version is
+required by the commonly installed `gcsfs==2025.7.0`; ECMWF ARCO itself is
+accessed over authenticated HTTPS and does not require `gcsfs`.
 ```
 
 ## Validation review
