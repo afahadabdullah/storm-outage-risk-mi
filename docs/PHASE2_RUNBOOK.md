@@ -85,8 +85,10 @@ scratch storage.
 make phase2-submit
 ```
 
-The controller runs preflight, submits one stage with `sbatch --wait`, and does
-not submit the next stage until the current one succeeds. The order is annual
+The controller runs preflight, submits one stage at a time, prints its job ID,
+log location, queue state, and elapsed time every 30 seconds, confirms its
+success through Slurm accounting, and does not submit the next stage until the
+current one succeeds. The order is annual
 EAGLE-I outages, the ERA5 monthly array, 2021 NLCD tree-canopy statistics, the
 2018–2022 build, training/validation, GEFS, and the application stages. The
 ERA5 array still permits two monthly tasks at once; no other Phase 2 stage

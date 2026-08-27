@@ -151,5 +151,5 @@ phase2-build-test: ## explicitly open/build the held-out test year
 phase2-test: ## score frozen model on the test year exactly once
 	$(PY) src/phase2_train.py --config $(CFG) --phase2 $(P2) --evaluate-test
 
-phase2-submit: ## sequential Slurm pipeline; each stage waits and must succeed
+phase2-submit: ## sequential Slurm pipeline; each stage is watched and must succeed
 	bash slurm/submit_phase2.sh

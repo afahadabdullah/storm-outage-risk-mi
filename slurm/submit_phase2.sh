@@ -1,7 +1,7 @@
 #!/bin/bash
 # Submit downloads, preprocessing, training and application one stage at a
-# time. Each sbatch call blocks until that stage succeeds, so a failure cannot
-# leave a screenful of permanently pending dependency jobs.
+# time. The controller watches each job to keep terminal feedback useful, then
+# confirms Slurm accounting reports success before submitting the next stage.
 # The final test is deliberately NOT submitted: it is manual, once, after the
 # validation review freezes every model and hyperparameter decision.
 set -euo pipefail
@@ -27,14 +27,68 @@ fi
 run_stage() {
   local label="$1"
   local script="$2"
+  local submission job_id queue_status status accounting state exit_code
+  local attempt
   printf '\n== %s ==\n' "${label}"
-  if sbatch --wait --export=ALL "${script}"; then
+  submission=$(sbatch --parsable --export=ALL "${script}")
+  job_id="${submission%%;*}"
+  if [[ ! "${job_id}" =~ ^[0-9]+$ ]]; then
+    printf 'FAILED: could not read a Slurm job ID for %s.\n' "${label}" >&2
+    printf '  sbatch returned: %s\n' "${submission}" >&2
+    exit 1
+  fi
+  printf 'submitted: %s\n' "${job_id}"
+  printf 'logs: logs/slurm/*-%s*.out  (tail -f that file)\n' "${job_id}"
+
+  while :; do
+    queue_status=$(squeue --noheader --jobs="${job_id}" \
+      --format='%T | elapsed %M | limit %l | %R' 2>/dev/null || true)
+    [[ -z "${queue_status}" ]] && break
+    while IFS= read -r status; do
+      printf '[%s] job %s: %s\n' "$(date '+%H:%M:%S')" "${job_id}" "${status}"
+    done <<< "${queue_status}"
+    sleep 30
+  done
+
+  # A completed job can disappear from squeue a few seconds before sacct sees
+  # it. Do not guess that this means success: fail closed if accounting cannot
+  # confirm a clean completion, so no later stage is submitted incorrectly.
+  accounting=""
+  for attempt in {1..12}; do
+    accounting=$(sacct --array --noheader --parsable2 --jobs="${job_id}" \
+      --format=JobID,State,ExitCode 2>/dev/null | \
+      awk -F'|' -v id="${job_id}" '
+        $1 == id || index($1, id "_") == 1 {
+          found = 1
+          if ($2 != "COMPLETED" || $3 != "0:0") {
+            failure = $2 "|" $3
+          }
+        }
+        END {
+          if (found) {
+            print failure ? failure : "COMPLETED|0:0"
+          }
+        }')
+    [[ -n "${accounting}" ]] && break
+    sleep 5
+  done
+  if [[ -z "${accounting}" ]]; then
+    printf 'FAILED: job %s left the queue but sacct did not report its result.\n' \
+      "${job_id}" >&2
+    printf 'No later stage was submitted; inspect logs/slurm/*-%s*.{out,err}.\n' \
+      "${job_id}" >&2
+    exit 1
+  fi
+
+  state="${accounting%%|*}"
+  exit_code="${accounting#*|}"
+  if [[ "${state}" == "COMPLETED" && "${exit_code}" == "0:0" ]]; then
     printf 'completed: %s\n' "${label}"
   else
-    local status=$?
-    printf 'FAILED: %s (sbatch exit %d). No later stage was submitted.\n' \
-      "${label}" "${status}" >&2
-    exit "${status}"
+    printf 'FAILED: %s (Slurm state %s, exit %s). No later stage was submitted.\n' \
+      "${label}" "${state}" "${exit_code}" >&2
+    printf 'logs: logs/slurm/*-%s*.{out,err}\n' "${job_id}" >&2
+    exit 1
   fi
 }
 
