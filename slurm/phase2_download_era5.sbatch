@@ -1,4 +1,4 @@
-#!/bin/bash -l
+#!/bin/bash
 #SBATCH --job-name=storm-p2-era5
 #SBATCH --array=0-71%2
 #SBATCH --cpus-per-task=2
@@ -9,7 +9,8 @@
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
-export PYTHONNOUSERSITE=1
+source slurm/phase2_env.sh
 year=$((2018 + SLURM_ARRAY_TASK_ID / 12))
 month=$((1 + SLURM_ARRAY_TASK_ID % 12))
-python src/phase2_download.py --only era5 --years "${year}" --months "${month}"
+"${PHASE2_PYTHON}" src/phase2_download.py --only era5 \
+  --years "${year}" --months "${month}"

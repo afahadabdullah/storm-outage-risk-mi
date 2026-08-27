@@ -1,4 +1,4 @@
-#!/bin/bash -l
+#!/bin/bash
 #SBATCH --job-name=storm-p2-apply
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=192G
@@ -12,7 +12,7 @@
 # because the Monte Carlo holds (county-days x n_mc_draws) floats.
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
-export PYTHONNOUSERSITE=1
-python src/phase2_compose.py
-python src/phase2_forecast.py
-python src/phase2_value.py
+source slurm/phase2_env.sh
+"${PHASE2_PYTHON}" src/phase2_compose.py
+"${PHASE2_PYTHON}" src/phase2_forecast.py
+"${PHASE2_PYTHON}" src/phase2_value.py

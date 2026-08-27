@@ -1,6 +1,6 @@
 # Primary environment.
-#   mamba env create -f env/environment.yml     (or conda)
-#   conda activate storm-outage-risk
+#   mamba env create --prefix /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk -f env/environment.yml
+#   conda activate /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk
 #   make env-lock        <-- writes env/environment.lock.yml, the exact solve
 #
 # Version policy, and why it is not "exact pins everywhere":

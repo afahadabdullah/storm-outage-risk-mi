@@ -46,10 +46,14 @@ no days clear it, or almost all do, adjust `storm_min_county_frac` in
 
 ## Cluster preflight
 
-Activate the project environment before submitting. Slurm exports the current
-environment by default on the target cluster — verify that, because if it
-defaults to `--export=NONE` the `python` in every sbatch is the system python
-and all jobs fail identically at import.
+The Phase 2 Makefile and every Slurm job use this interpreter directly:
+
+```text
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python
+```
+
+The batch scripts deliberately do not use login shells: a login shell reset the
+activated Conda environment and caused every job to fail at `import pandas`.
 
 ```bash
 cd /panfs/ccds02/nobackup/people/afahad/project/storm-outage-risk-mi
@@ -69,7 +73,7 @@ Confirm the CDS token works **from a compute node**, not just the login node:
 
 ```bash
 srun --pty -t 00:10:00 --mem=4G bash -lc \
-  'python -c "import cdsapi, ngboost, lifelines, properscoring, statsmodels; print(\"ok\")"'
+  '/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python -c "import cdsapi, ngboost, lifelines, properscoring, statsmodels; print(\"ok\")"'
 ```
 
 Data live under `data/raw`, so the repository should remain on project or
@@ -81,11 +85,16 @@ scratch storage.
 make phase2-submit
 ```
 
-The script runs preflight in the foreground first, then submits: annual EAGLE-I
-downloads, a throttled 72-task ERA5 monthly array, official 2021 NLCD
-tree-canopy county statistics (waiting on the outage job, so TIGER counties are
-fetched once), 2023 GEFS case-study downloads, the 2018–2022 feature build, CPU
-training, and the application stages.
+The controller runs preflight, submits one stage with `sbatch --wait`, and does
+not submit the next stage until the current one succeeds. The order is annual
+EAGLE-I outages, the ERA5 monthly array, 2021 NLCD tree-canopy statistics, the
+2018–2022 build, training/validation, GEFS, and the application stages. The
+ERA5 array still permits two monthly tasks at once; no other Phase 2 stage
+overlaps it. A failed stage stops the controller immediately.
+
+Because the controller remains attached while waiting, run it in a persistent
+`tmux`, `screen`, or JupyterHub terminal. If that terminal is terminated, the
+already-submitted job continues but the next stage is not submitted.
 
 If the §8 forecast work is out of scope for this pass, skip the GEFS download
 and the apply job entirely — downloading 31 members × 4 leads for bytes nothing
@@ -95,7 +104,7 @@ reads is pure waste:
 PHASE2_WITH_FORECAST=0 make phase2-submit
 ```
 
-Monitor with:
+Only the current stage should appear in the queue. Monitor with:
 
 ```bash
 squeue -u "$USER"
@@ -105,7 +114,8 @@ tail -f logs/slurm/storm-p2-train-*.out
 Every downloader is cache-aware. A failed monthly task can be restarted:
 
 ```bash
-python src/phase2_download.py --only era5 --years 2020 --months 7
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+  src/phase2_download.py --only era5 --years 2020 --months 7
 ```
 
 ERA5 is the long pole: 72 CDS requests, 2 concurrent, each queuing
@@ -229,7 +239,8 @@ coordinate names, two annual EAGLE-I CSVs — that runs the whole chain in about
 twenty seconds with no downloads and no credentials:
 
 ```bash
-python tests/phase2_fixture.py /tmp/p2scratch
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+  tests/phase2_fixture.py /tmp/p2scratch
 ```
 
 `tests/test_phase2_logic.py` uses it, and includes a regression test at

@@ -1,4 +1,4 @@
-#!/bin/bash -l
+#!/bin/bash
 #SBATCH --job-name=storm-p2-final-test
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
@@ -17,11 +17,11 @@
 # --force-test.
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
-export PYTHONNOUSERSITE=1
-python src/phase2_build.py --through test --acknowledge-test
-python src/phase2_train.py --evaluate-test
+source slurm/phase2_env.sh
+"${PHASE2_PYTHON}" src/phase2_build.py --through test --acknowledge-test
+"${PHASE2_PYTHON}" src/phase2_train.py --evaluate-test
 
 # With the test year open, redraw the section 8.4 money plot -- it can now carry
 # the observed overlay -- and recompute the per-lead cost-loss curves.
-python src/phase2_forecast.py
-python src/phase2_value.py
+"${PHASE2_PYTHON}" src/phase2_forecast.py
+"${PHASE2_PYTHON}" src/phase2_value.py

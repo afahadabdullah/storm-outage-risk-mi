@@ -27,12 +27,14 @@ cd storm-outage-risk-mi
 
 # conda/mamba is the primary path — geopandas, rasterio and cfgrib all pull
 # binary geo stacks that pip resolves badly on some Linux images
-mamba env create -f env/environment.yml   # or: conda env create -f ...
-conda activate storm-outage-risk
+mamba env create --prefix \
+  /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk \
+  -f env/environment.yml
+conda activate /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk
 ```
 
-If the box has no conda, `uv venv --python 3.11 .venv && uv pip install -r
-env/requirements.txt` works, but expect to fix `cfgrib`/`eccodes` by hand.
+If the box has no conda, `make env-pip` creates the same absolute environment
+path from `env/requirements.txt`, but expect to fix `cfgrib`/`eccodes` by hand.
 
 ## 2. Preflight, then prove the plumbing before touching the network
 
@@ -96,7 +98,8 @@ Everything from here runs inside that. The CDS queue has been known to run hours
 
 ```bash
 make fetch                            # EAGLE-I year + MCC + TIGER counties, ~10 min
-python src/select_window.py --write   # writes window_start/end into config/phase1.yaml
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+  src/select_window.py --write       # writes window_start/end into config/phase1.yaml
 ```
 
 `select_window.py` prints the peak, plots the year to
@@ -120,8 +123,10 @@ tail -f logs/era5.log
 While that sits in the queue, in a second tmux pane:
 
 ```bash
-python src/02_fetch_weather.py --only gefs      # ~20 min, byte-range subset
-python src/02_fetch_weather.py --only canopy    # ~15 min, large; optional
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+  src/02_fetch_weather.py --only gefs          # ~20 min, byte-range subset
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+  src/02_fetch_weather.py --only canopy        # ~15 min, large; optional
 ```
 
 Before step 7, return to the pane that launched ERA5 and wait for the background
@@ -210,11 +215,11 @@ and the measurements table. Those five are the entire carry-forward.
 |---|---|---|
 | `PackagesNotFoundError: lifelines=...` | not on conda-forge | it is in the `pip:` section now; `git pull` |
 | `cannot import name 'trapz' from 'scipy.integrate'` | lifelines < 0.29 with scipy >= 1.14 | `pip install -U lifelines==0.30.3` |
-| a package loads from `~/.local/...` in a traceback | user site-packages shadowing the env | `export PYTHONNOUSERSITE=1` — the Makefile sets it; a bare `python src/...` does not |
+| a package loads from `~/.local/...` in a traceback | wrong interpreter or user site-packages shadowing the env | use `/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python`; the Makefile and Slurm scripts enforce it |
 | `403` from CDS with no useful message | ERA5 licence not accepted | accept it once in the CDS web UI |
 | CDS request hangs "queued" for hours | normal at peak | it is unattended; do step 6's other work |
 | xarray says no installed backend matches `era5_*.nc` | CDS returned ZIP bytes under the requested `.nc` target, or Phase 1 opened an incomplete download | wait for `make era5-only` to finish, then pull current code; it validates downloads and merges zipped NetCDF members automatically |
-| `no .idx` / `NoSuchKey` from `noaa-gefs-pds` for a historical date | operational GEFS has aged out | pull the current code and rerun `python src/02_fetch_weather.py --only gefs`; it falls back to NOAA's GEFSv12 reforecast archive for 2000–2019 |
+| `no .idx` / `NoSuchKey` from `noaa-gefs-pds` for a historical date | operational GEFS has aged out | pull the current code and rerun `/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python src/02_fetch_weather.py --only gefs`; it falls back to NOAA's GEFSv12 reforecast archive for 2000–2019 |
 | NLCD canopy download returns 404 | MRLC moved the bulk ZIP | safe to skip in Phase 1; the canopy feature is NaN-filled as designed. Use the current MRLC/USFS download service before Phase 2 |
 | `no such table: gpkg_contents` | you reverted to `.gpkg` on a network mount | keep GeoParquet |
 | unmatched FIPS printed at step 3 | leading zeros, or a county boundary change | the list is printed in full — reconcile it, do not filter it away |

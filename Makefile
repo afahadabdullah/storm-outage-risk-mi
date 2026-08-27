@@ -3,7 +3,8 @@
 #   make phase1-synthetic   full pipeline on generated data -- no credentials
 #   make phase1             full pipeline on real data (needs ~/.cdsapirc)
 # =============================================================================
-PY      ?= python
+ENV_PREFIX := /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk
+PY      := $(ENV_PREFIX)/bin/python
 
 # On shared machines ~/.local/lib/pythonX.Y/site-packages shadows the conda env
 # and you silently run a DIFFERENT scipy/numpy than the one you installed. That
@@ -28,13 +29,16 @@ help:
 	  awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n",$$1,$$2}'
 
 env: ## create the conda environment (ranges; then run `make env-lock`)
-	mamba env create -f env/environment.yml || conda env create -f env/environment.yml
+	mamba env create --prefix $(ENV_PREFIX) -f env/environment.yml || \
+	  conda env create --prefix $(ENV_PREFIX) -f env/environment.yml
 
 env-pip: ## alternative: a uv/pip virtualenv from exact pins
-	uv venv --python 3.11 .venv && uv pip install -r env/requirements.txt
+	uv venv --python 3.11 $(ENV_PREFIX) && \
+	  uv pip install --python $(PY) -r env/requirements.txt
 
 env-lock: ## capture the exact solve -- THIS is the reproducible artifact
-	conda env export --no-builds | grep -v '^prefix:' > env/environment.lock.yml
+	conda env export --prefix $(ENV_PREFIX) --no-builds | \
+	  grep -v '^prefix:' > env/environment.lock.yml
 	@echo "wrote env/environment.lock.yml -- commit it alongside any results"
 
 doctor: ## preflight a fresh machine: packages, ~/.cdsapirc, network, disk
@@ -81,9 +85,9 @@ phase1-diff: ## section 9.1: every key phase1.yaml overrides, for the revert che
 	[print(f'{k:26s} phase1={b[k]!r:28s} region={a.get(k,\"<unset>\")!r}') for k in b if a.get(k)!=b[k]]"
 
 test: ## the assertion suite, promoted to pytest (section 9.5)
-	pytest -q tests/
+	$(PY) -m pytest -q tests/
 
-lint: ; ruff check $(SRC) tests
+lint: ; $(PY) -m ruff check $(SRC) tests
 
 clean-phase1: ## section 9.3: delete every contaminated phase 1 artifact
 	rm -rf models/phase1_* figures/phase1_* data/processed/phase1_*
@@ -147,5 +151,5 @@ phase2-build-test: ## explicitly open/build the held-out test year
 phase2-test: ## score frozen model on the test year exactly once
 	$(PY) src/phase2_train.py --config $(CFG) --phase2 $(P2) --evaluate-test
 
-phase2-submit: ## submit CPU-only Slurm download -> build -> train -> apply chain
+phase2-submit: ## sequential Slurm pipeline; each stage waits and must succeed
 	bash slurm/submit_phase2.sh

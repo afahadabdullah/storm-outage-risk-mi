@@ -1,4 +1,4 @@
-#!/bin/bash -l
+#!/bin/bash
 #SBATCH --job-name=storm-p2-train
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
@@ -8,5 +8,5 @@
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
-export PYTHONNOUSERSITE=1
-python src/phase2_train.py
+source slurm/phase2_env.sh
+"${PHASE2_PYTHON}" src/phase2_train.py

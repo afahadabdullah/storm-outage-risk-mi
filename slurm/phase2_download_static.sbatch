@@ -1,4 +1,4 @@
-#!/bin/bash -l
+#!/bin/bash
 #SBATCH --job-name=storm-p2-static
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=48G
@@ -8,5 +8,5 @@
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
-export PYTHONNOUSERSITE=1
-python src/phase2_download.py --only canopy
+source slurm/phase2_env.sh
+"${PHASE2_PYTHON}" src/phase2_download.py --only canopy

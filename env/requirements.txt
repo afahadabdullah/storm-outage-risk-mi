@@ -1,6 +1,6 @@
 # pip / uv path. Use this when conda is unavailable or its solve is slow.
-#   uv venv --python 3.11 .venv && source .venv/bin/activate
-#   uv pip install -r env/requirements.txt
+#   make env-pip
+# This installs into /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk.
 #
 # All of these have manylinux wheels, so nothing compiles from source on a
 # normal x86-64 Linux box. If a wheel is missing for your platform (aarch64,

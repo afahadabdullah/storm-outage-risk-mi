@@ -20,7 +20,9 @@ converted into a decision-economic answer.
 ## Quickstart
 
 ```bash
-conda env create -f env/environment.yml && conda activate storm-outage-risk
+mamba env create --prefix /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk \
+  -f env/environment.yml
+conda activate /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk
 make doctor                  # packages, ~/.cdsapirc, egress, disk
 make phase1-synthetic        # ~5 s, no credentials, no downloads
 make test
@@ -41,10 +43,13 @@ follows, with wait times, credentials, tmux and triage.
 # queued until the window is chosen, which needs the outage data first. That
 # constraint fixes the order below.
 make fetch                            # EAGLE-I annual CSV + MCC + TIGER counties
-python src/select_window.py --write   # pick the 5-day window FROM THE DATA
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+  src/select_window.py --write       # pick the 5-day window FROM THE DATA
 nohup make era5-only &                # queue ERA5, then go do something else
-python src/02_fetch_weather.py --only gefs
-python src/02_fetch_weather.py --only canopy
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+  src/02_fetch_weather.py --only gefs
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+  src/02_fetch_weather.py --only canopy
 make phase1                           # raw -> decision number, one command
 ```
 
@@ -57,7 +62,7 @@ only when every criterion in that report says PASS.
 The full study is CPU-only and uses frozen 2018–2021 / 2022 / 2023 splits:
 
 ```bash
-make phase2-submit       # downloads -> 2018-2022 build -> train/validate
+make phase2-submit       # sequential downloads -> build -> train/validate
 # Review validation and freeze all choices, then exactly once:
 sbatch slurm/phase2_final_test.sbatch
 ```
