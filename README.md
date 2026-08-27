@@ -1,175 +1,147 @@
 # Storm-Driven Outage Risk and Forecast Value — Michigan
 
-Probabilistic county-day model linking weather hazard to electricity
-distribution outage **consequence**, driven by real forecast ensembles, and
-converted into a decision-economic answer.
+This repository develops a probabilistic, county-day framework for estimating
+electricity-distribution outage consequence from weather hazards and for
+quantifying the operational value of real forecast ensembles. The study area is
+Michigan; the outcome is customer outage consequence, not asset fragility or
+the physical cause of damage.
 
-> **Status: Phase 1 passed; the Phase 2 full-study workflow is ready to run. No
-> validated results yet.**
-> Phase 1 proves the plumbing: every join lands, every unit is what you think it
-> is, every array has the shape you expect, and data flows from raw CSV to a
-> dollar figure without manual intervention. The models fitted at this stage are
-> statistically meaningless — five days gives too few independent storm
-> observations for validation, regardless of the exact event count —
-> and they are deleted at the handoff. No skill score, no coefficient and no
-> dollar figure in this repository refers to anything real until Phase 2's
-> validation stage has run against the held-out test year.
+## Scientific objective
 
----
+The project asks two linked questions:
 
-## Phase 2 workflow
+1. Given observed weather, what is the distribution of outage occurrence,
+   affected customers, and restoration time for each county-day?
+2. Given an ensemble forecast, how does advance knowledge of that distribution
+   change a cost-sensitive preparation decision?
 
-![Phase 2 workflow: Michigan weather, outage, canopy, and forecast data are aggregated to county-day features, divided into frozen train, validation, and final-test periods, modeled probabilistically, and converted into forecast risk and decision value.](docs/assets/phase2-workflow.png)
+The analysis preserves uncertainty throughout. It models outage occurrence,
+magnitude, and restoration as separate distributions, composes them by Monte
+Carlo simulation, and reports risk and decision value rather than a single
+deterministic outage estimate.
 
-The diagram shows the production data flow, not model results. ERA5 and
-EAGLE-I supply the historical hazard and consequence record; static canopy and
-county geometry add exposure context; the frozen 2018–2021 / 2022 / 2023 split
-feeds occurrence, magnitude, and restoration models; and GEFS drives the two
-2023 forecast case studies and decision-value analysis.
+## Workflow
 
----
+![Storm-driven outage risk workflow: Michigan weather, outage, canopy, and forecast data are aggregated to county-day features; historical years support model development and final evaluation; probability distributions are composed into county outage risk and decision value.](docs/assets/project-workflow.png)
 
-## Quickstart
+Historical hazards and outage records are converted from hourly gridded and
+county data into a common county-day table. A frozen temporal design uses
+2018–2021 for fitting, 2022 for validation and model selection, and 2023 for a
+single final evaluation. GEFS ensemble forecasts then drive the 2023 case-study
+scenarios at lead days 5, 3, 2, and 1.
+
+## Data
+
+| Data product | Coverage | Role in the analysis |
+|---|---|---|
+| EAGLE-I county outage records | 2017–2023 | Hourly outage consequence and event construction; 2017 supplies baseline context. |
+| Monthly County Customer (MCC) data | Available reporting years | Customer denominator for outage fractions and customer-hours. |
+| ERA5 hourly reanalysis | 2018–2023, Michigan bbox | Historical wind, gust, precipitation, temperature, soil, convective, and snow predictors. Seven fields are read from ECMWF ARCO; five residual fields are retrieved from CDS. |
+| TIGER/Line counties | 2023 geography | County geometry and land area for spatial aggregation and exposure features. |
+| NLCD tree canopy | 2021 | County canopy exposure and weather–vegetation interactions. |
+| GEFS ensemble forecasts | Two 2023 case studies | Forecast scenarios for lead-time, calibration, and decision-value analysis. |
+| ICE Calculator inputs | Study assumptions | Interruption-cost inputs for cost-loss and value-of-information calculations. |
+
+## Methods
+
+### Outcome construction
+
+Outage records are normalized to UTC and converted to county-hour maxima.
+Customer outages are divided by MCC denominators. A rolling 30-day, 10th
+percentile baseline separates excess outage from routine background activity;
+contiguous excess periods form outage events.
+
+### Weather and spatial features
+
+ERA5 fields are aggregated from a 0.25° grid to counties in the equal-area
+EPSG:5070 coordinate system. Area-weighted means represent smooth fields such
+as precipitation, soil moisture, and temperature. Spatial maxima represent
+tail hazards such as gust and CAPE. Daily features include gust thresholds,
+precipitation totals, freezing-rain and wet-snow proxies, antecedent
+precipitation, canopy interactions, and seasonal indicators.
+
+### Probabilistic outage model
+
+Three linked models estimate:
+
+- **Occurrence:** probability of any outage event on a county-day.
+- **Magnitude:** conditional customer outage consequence.
+- **Restoration:** conditional duration of an outage event.
+
+The three distributions are sampled jointly through Monte Carlo composition to
+produce a county-level distribution of customers affected, customer-hours, and
+cost. Calibration and storm-aware cross-validation evaluate the models without
+treating nearby days from the same storm as independent evidence.
+
+### Forecast and decision analysis
+
+For the two 2023 case studies, GEFS members provide day-5, day-3, day-2, and
+day-1 forecast scenarios. Forecast features are aligned with the historical
+feature definitions and bias-corrected before the trained risk model is
+applied. The resulting predictive distributions feed a cost-loss calculation
+that compares preparation costs, expected outage costs, break-even inspection
+costs, and the value of perfect information.
+
+## Scientific safeguards
+
+- **One time standard:** all timestamps are converted to UTC at ingestion.
+- **Geographically valid aggregation:** county-grid weights are calculated in
+  an equal-area CRS rather than latitude/longitude degrees.
+- **No test-year tuning:** 2023 is reserved for final evaluation after model
+  choices are fixed from the earlier years.
+- **Distributional predictions:** uncertainty from occurrence, magnitude, and
+  duration is propagated rather than collapsed into point estimates.
+- **Event-aware validation:** storm-grouped and county-aware folds reduce
+  leakage from correlated weather and outage observations.
+
+## Outputs
+
+The repository produces reproducible county-hour and county-day tables,
+event records, calibrated validation metrics, fitted model bundles, probabilistic
+outage-risk scenarios, forecast maps, and decision-economic summaries. The
+workflow is designed so that every intermediate artifact can be inspected,
+validated, and regenerated from configuration and raw inputs.
+
+## Repository guide
+
+```text
+config/       study geography, temporal splits, data sources, and model controls
+data/         raw, interim, and processed artifacts
+docs/         runbooks, methodological notes, and workflow figures
+env/          reproducible environment specifications
+slurm/        CPU Slurm jobs for downloading, preprocessing, training, and evaluation
+src/          ingestion, event construction, feature engineering, modeling, forecasting,
+              decision analysis, and shared geospatial utilities
+tests/        data-contract, feature, modeling, and workflow assertions
+Makefile      reproducible commands and validation targets
+```
+
+Create the specified environment and inspect the available reproducible
+commands with:
 
 ```bash
 mamba env create --prefix /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk. \
   -f env/environment.yml
 conda activate /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk.
-make doctor                  # packages, ~/.cdsapirc, egress, disk
-make phase1-synthetic        # ~5 s, no credentials, no downloads
 make test
+make help
 ```
-
-`phase1-synthetic` generates stand-in data with the same schemas, units and
-dtypes the real fetchers produce, then runs the entire pipeline through it. It
-exists so that plumbing bugs are found in seconds rather than after a three-hour
-CDS queue. Every number it produces is fictional.
-
-**Running on a remote box?** `docs/RUNBOOK.md` is the ordered version of what
-follows, with wait times, credentials, tmux and triage.
-
-### The real run
-
-```bash
-# The CDS queue is the only unpredictable wait in the project, and it cannot be
-# queued until the window is chosen, which needs the outage data first. That
-# constraint fixes the order below.
-make fetch                            # EAGLE-I annual CSV + MCC + TIGER counties
-/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python \
-  src/select_window.py --write       # pick the 5-day window FROM THE DATA
-nohup make era5-only &                # queue ERA5, then go do something else
-/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python \
-  src/02_fetch_weather.py --only gefs
-/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python \
-  src/02_fetch_weather.py --only canopy
-make phase1                           # raw -> decision number, one command
-```
-
-`make phase1` writes **`docs/phase1_report.md`** — the section 7 go/no-go table
-and the section 8 measurements table, both filled in from the run. Phase 2 starts
-only when every criterion in that report says PASS.
-
-### Full Phase 2 run
-
-The full study is CPU-only and uses frozen 2018–2021 / 2022 / 2023 splits:
-
-```bash
-make phase2-submit       # sequential downloads -> build -> train/validate
-# Review validation and freeze all choices, then exactly once:
-sbatch slurm/phase2_final_test.sbatch
-```
-
-Phase 2 ERA5 reads the seven available fields from ECMWF's geo-chunked ARCO
-store once, saving one Michigan-only 2018–2023 cache. The restartable monthly
-array then merges five residual CDS fields into each monthly NetCDF. Set
-`era5_backend: cds` in `phase2.yaml` only when ARCO is unavailable.
-
-See [`docs/PHASE2_RUNBOOK.md`](docs/PHASE2_RUNBOOK.md) for outputs, restart
-commands, resource requests, and the test-year lock.
-
----
-
-## Layout
-
-```
-config/region.yaml       the only file to edit for a new region; frozen after day 2
-config/phase1.yaml       TEMPORARY overrides; `make phase1-diff` lists them all
-config/phase2.yaml       full-study execution controls; frozen splits stay in region.yaml
-src/doctor.py            preflight for a fresh machine
-src/select_window.py     step 0  window chosen from data, not from memory
-src/01_fetch_outage.py   step 1  EAGLE-I + MCC denominator + TIGER counties
-src/02_fetch_weather.py  step 2  ERA5 (CDS), GEFS (AWS byte-range), NLCD canopy
-src/03_build_events.py   step 3  normalise, remove baseline, threshold -> events
-src/04_build_features.py step 4  ERA5 -> county-day, and the correlation gate
-src/05_fit_models.py     step 5  occurrence / magnitude / duration, all distributions
-src/06_compose_mc.py     step 6  Monte Carlo through all three stages
-src/07_forecast_cases.py step 7  GEFS, quantile-mapped, one lead time
-src/08_decision_value.py step 8  cost-loss value and break-even inspection cost
-src/phase2_download.py   annual/monthly/case-study data acquisition
-src/phase2_build.py      rolling-baseline multi-year events and weather features
-src/phase2_train.py      frozen fit, calibration, blocked CV, and final test
-src/run_phase2.py        build + train/validate runner; never opens test year
-src/common/geo.py        the cell-to-county weight matrix, built once, in EPSG:5070
-tests/                   the phase 1 assertions, promoted to a test module
-```
-
-Numbered scripts follow the project spec's file names, so they are executed
-rather than imported; anything shared between them lives in `src/common/`.
-
-## Design decisions worth knowing before reading the code
-
-**One time reference.** Everything is UTC, converted once at ingestion. A silent
-local/UTC mismatch shifts the storm four to five hours and quietly destroys the
-weather–outage correlation; the model just looks weak and you spend a day
-blaming the features.
-
-**Two aggregations, on purpose.** Smooth fields (precipitation, soil moisture,
-temperature) get an area-weighted county mean. Tail fields (gust, CAPE) get the
-max over intersecting cells. Damage is a tail phenomenon and a county-mean gust
-destroys the signal. Both matrices are built once, in the equal-area CRS — area
-maths in EPSG:4326 is wrong by a latitude-dependent factor that in a north–south
-state like Michigan is large enough to matter and small enough to look plausible.
-
-**Everything outputs a distribution.** Occurrence, magnitude and duration are
-each sampled, never multiplied as point estimates. Composing medians produces
-output that looks entirely reasonable and carries no uncertainty at all, which is
-why `tests/` asserts per-row spread on the conditional draws.
-
-**Gate criterion 6 is the real gate.** `corr(gust_max, customer_hours / MCC) > 0.3`
-across county-days with an event. This respects storms that reach counties at
-different local times; the state-wide peak day remains a diagnostic. Criteria
-1–5 and 7–10 test whether the code runs; 6 tests whether public county-level
-outage records carry a recoverable weather signal at all. If it fails while the
-rest pass, the problem is scientific, and the diagnostic order is: timezone
-alignment, then event-day identity across the two datasets, then utility
-reporting coverage in the hardest-hit counties, then whether ERA5 resolved this
-storm's gusts.
-
-## Phase 1 discipline
-
-1. **Do not interpret any Phase 1 result.** Not the AUC, not the hazard ratios,
-   not the break-even cost.
-2. **Do not tune anything.** Tuning on a smoke-test slice contaminates Phase 2
-   before it starts.
-3. **Do not keep any Phase 1 artifact.** `make clean-phase1` deletes the fitted
-   models and figures. Timing and volume measurements are the one thing that
-   carries forward.
-4. **Touch the test year exactly once**, at the end of Phase 2, after every model
-   and hyperparameter decision is frozen. If the results disappoint, report them
-   and diagnose why. Do not go back and tune.
 
 ## Limitations
 
-Stated up front, before anyone asks — the full list is in §11 of the project
-spec. The load-bearing ones: county aggregation hides network structure; EAGLE-I
-reports consequence, not cause, so this is **not** fragility modeling; canopy
-percentage is exposure, not vegetation-management condition; ERA5 under-resolves
-convective gusts at 0.25°; there are no asset age, material or inspection
-records; and restoration time confounds damage severity with crew logistics.
+County aggregation hides distribution-network topology and local asset
+condition. EAGLE-I records outage consequence rather than causal mechanism, so
+the framework is not a fragility model. ERA5 can under-resolve convective gusts
+at 0.25°, tree-canopy percentage is not a measure of vegetation-management
+condition, and restoration duration also reflects crew logistics. The dataset
+does not include asset age, conductor material, inspection history, or
+utility-specific operational practices.
 
-## Data sources
+## Data provenance
 
-EAGLE-I county outage data (ORNL, figshare `10.6084/m9.figshare.24237376`);
-ERA5 via the Copernicus Climate Data Store; GEFS via `noaa-gefs-pds` on AWS;
-NLCD 2021 tree canopy (MRLC); TIGER/Line counties (US Census); ICE Calculator
-(LBNL/DOE) for interruption costs.
+EAGLE-I county outage data are from ORNL/figshare
+(`10.6084/m9.figshare.24237376`); ERA5 is provided by the Copernicus Climate
+Data Store and ECMWF ARCO; GEFS is accessed through NOAA's public cloud
+archive; NLCD tree canopy is from MRLC; county geometry is from the U.S. Census
+TIGER/Line program; and interruption-cost assumptions draw on the LBNL/DOE ICE
+Calculator.
