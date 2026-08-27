@@ -72,7 +72,7 @@ def fetch_eaglei(cfg, year: int) -> tuple[Path, Path]:
         return outages, mcc
     try:
         files = figshare_files(cfg["sources"]["eaglei_figshare_article"])
-    except Exception as err:                                  # noqa: BLE001
+    except Exception as err:
         raise SystemExit(MANUAL.format(err=err, year=year)) from err
 
     for name, dest in ((f"eaglei_outages_{year}.csv", outages), ("MCC.csv", mcc)):
