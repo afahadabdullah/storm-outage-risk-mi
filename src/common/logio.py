@@ -15,8 +15,6 @@ from pathlib import Path
 
 from .config import PATHS
 
-
-
 # Phase 2 scale factors, from the phase 1 spec section 8 table.
 PHASE2_FACTOR = {
     "era5_download": 438, "era5_to_county": 438, "event_detection": 438,

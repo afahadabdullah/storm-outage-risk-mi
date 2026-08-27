@@ -115,8 +115,8 @@ def main(phase: int = 1) -> int:
 
     print("\nknown incompatibilities")
     try:
-        import scipy
         import lifelines
+        import scipy
         sv = tuple(int(x) for x in scipy.__version__.split(".")[:2])
         lv = tuple(int(x) for x in lifelines.__version__.split(".")[:2])
         bad = sv >= (1, 14) and lv < (0, 29)
@@ -126,7 +126,7 @@ def main(phase: int = 1) -> int:
              f"scipy {scipy.__version__} + lifelines {lifelines.__version__}",
              "lifelines < 0.29 calls scipy.integrate.trapz, removed in scipy "
              "1.14. Upgrade lifelines to 0.30.3." if bad else "")
-    except Exception as err:                                    # noqa: BLE001
+    except Exception as err:
         line(WARN, "scipy/lifelines pairing", f"could not check ({err})")
 
     print("\ncredentials")
@@ -155,7 +155,7 @@ def main(phase: int = 1) -> int:
         try:
             socket.create_connection((host, 443), timeout=6).close()
             line(OK, host, why)
-        except Exception as err:                                # noqa: BLE001
+        except Exception as err:
             line(WARN, host, f"unreachable ({type(err).__name__}) -- {why}")
 
     print("\ndisk")

@@ -130,7 +130,7 @@ def fit_magnitude(frame: pd.DataFrame, feats: list[str], split, cfg: Config):
                 warnings.simplefilter("ignore")
                 model.fit(X, y)
             return {"kind": "ngboost", "model": model, "quantiles": quantiles}
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             log.warning("NGBoost failed (%s); using LightGBM quantiles", err)
 
     import lightgbm as lgb
@@ -223,7 +223,7 @@ def fit_duration(frame: pd.DataFrame, feats: list[str], split, cfg: Config):
     from lifelines.statistics import proportional_hazard_test
 
     events = frame[split["train"] & frame.event.eq(1)].copy().reset_index(drop=True)
-    numeric = feats + ["peak_frac_out", "concurrent_state_load"]
+    numeric = [*feats, "peak_frac_out", "concurrent_state_load"]
     X, fill = duration_frame(events, numeric)
     nunique = X.nunique(dropna=False)
     X = X.loc[:, nunique.gt(1)]
@@ -333,7 +333,7 @@ def fit_reference_models(frame: pd.DataFrame, feats: list[str], split, cfg: Conf
         try:
             out["logistic"] = sm.GLM(train.event.astype(float), Xtr,
                                      family=sm.families.Binomial()).fit(maxiter=200)
-        except Exception as err:                              # noqa: BLE001
+        except Exception as err:
             log.warning("logistic GLM reference failed (%s); skipping", err)
         events = train[train.event.eq(1)]
         if len(events) >= 50:
@@ -345,7 +345,7 @@ def fit_reference_models(frame: pd.DataFrame, feats: list[str], split, cfg: Conf
                 out["negbin"] = sm.GLM(
                     y, Xev, family=sm.families.NegativeBinomial(alpha=1.0)
                 ).fit(maxiter=200)
-            except Exception as err:                          # noqa: BLE001
+            except Exception as err:
                 log.warning("negative-binomial GLM reference failed (%s); skipping", err)
     log.info("reference models fitted on %d reduced features: %s",
              len(reduced), sorted(k for k in out if k != "columns"))
@@ -425,8 +425,12 @@ def crps_from_quantiles(observed: np.ndarray, qpred: np.ndarray,
 def evaluate(pred: pd.DataFrame, train: pd.DataFrame, label: str,
              quantiles: list[float]) -> dict:
     from lifelines.utils import concordance_index
-    from sklearn.metrics import (average_precision_score, brier_score_loss,
-                                 log_loss, roc_auc_score)
+    from sklearn.metrics import (
+        average_precision_score,
+        brier_score_loss,
+        log_loss,
+        roc_auc_score,
+    )
 
     y = pred.event.astype(int).to_numpy()
     p = pred.probability.to_numpy()
@@ -696,7 +700,7 @@ def plot_validation(pred: pd.DataFrame, label: str) -> None:
                                         n_bins=10, strategy="quantile", ax=axes[0])
     PrecisionRecallDisplay.from_predictions(pred.event, pred.probability, ax=axes[1])
     axes[0].set_title(f"Occurrence reliability — {label}")
-    axes[1].set_title(f"Occurrence precision–recall — {label}")
+    axes[1].set_title(f"Occurrence precision-recall — {label}")
     fig.tight_layout()
     fig.savefig(PATHS.figures / f"phase2_occurrence_{label}.png", dpi=160)
     plt.close(fig)

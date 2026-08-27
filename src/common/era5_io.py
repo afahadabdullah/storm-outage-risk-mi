@@ -46,7 +46,7 @@ def era5_file_status(path: Path) -> tuple[bool, str]:
             sample = ds[next(iter(ds.data_vars))]
             indexers = {dim: 0 for dim in sample.dims}
             sample.isel(indexers).load()
-    except Exception as err:                                  # noqa: BLE001
+    except Exception as err:
         return False, f"{type(err).__name__}: {err}"
     return True, "ok"
 

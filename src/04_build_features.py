@@ -28,7 +28,13 @@ import pandas as pd
 from src.common.config import PATHS, base_parser, config_from_args
 from src.common.era5_io import open_era5
 from src.common.gates import book
-from src.common.geo import agg_max, agg_mean, agg_quantile, build_weight_matrix, load_counties
+from src.common.geo import (
+    agg_max,
+    agg_mean,
+    agg_quantile,
+    build_weight_matrix,
+    load_counties,
+)
 from src.common.logio import get_logger, record, timed
 
 log = get_logger("04_features")
@@ -239,7 +245,7 @@ def load_canopy_pct(cfg, fips_list) -> pd.Series:
                 arr, _ = mask(src, [geom], crop=True, nodata=255)
                 vals = arr[(arr >= 0) & (arr <= 100)]
                 out[fips] = float(vals.mean()) if vals.size else np.nan
-            except Exception:                                  # noqa: BLE001
+            except Exception:
                 out[fips] = np.nan
     return pd.Series(out, dtype=float)
 

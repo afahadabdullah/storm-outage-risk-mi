@@ -156,7 +156,7 @@ def fit_magnitude(splits, feats, cfg, gb):
                 m.pred_dist(splits["all"][feats]).ppf(q) for q in qs])
             qpred = _assert_quantiles(qpred, qs, gb, "ngboost")
             return {"kind": "ngboost", "model": m, "quantiles": qs}, qpred, params
-        except Exception as err:                                # noqa: BLE001
+        except Exception as err:
             log.warning("NGBoost unavailable/failed (%s) -- falling back to "
                         "LightGBM quantile regression", err)
 
@@ -212,7 +212,7 @@ def fit_duration(splits, feats, cfg, gb):
                     "restoration; treating the longest as observed for phase 1")
         observed.iloc[int(dur.argmax())] = 1
 
-    cov = drop_degenerate(ev[feats + ["concurrent_state_load"]].fillna(0.0),
+    cov = drop_degenerate(ev[[*feats, "concurrent_state_load"]].fillna(0.0),
                           gb, "duration")
     # the covariate that signals domain understanding: restoration is slower when
     # crews are stretched across many simultaneously-damaged counties

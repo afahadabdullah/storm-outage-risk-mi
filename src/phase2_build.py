@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
-from src.common.config import PATHS, Config, ROOT, load_config
+from src.common.config import PATHS, ROOT, Config, load_config
 from src.common.gates import book, set_phase
 from src.common.io_outage import normalize_outage_frame
 from src.common.logio import get_logger, timed

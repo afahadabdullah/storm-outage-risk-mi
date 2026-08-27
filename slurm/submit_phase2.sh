@@ -11,6 +11,7 @@ mkdir -p logs/slurm
 echo "== preflight =="
 python src/doctor.py --phase 2
 python -m pytest -q tests/
+ruff check src tests
 echo
 
 # TIGER counties are fetched by BOTH the outage and canopy jobs. The write is

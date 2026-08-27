@@ -6,8 +6,12 @@ import pytest
 from sklearn.model_selection import GroupKFold
 
 from src.common.config import Config
-from src.phase2_train import (crps_from_quantiles, masks,
-                              _interp_log_quantiles, storm_groups)
+from src.phase2_train import (
+    _interp_log_quantiles,
+    crps_from_quantiles,
+    masks,
+    storm_groups,
+)
 
 
 def test_phase2_frozen_splits_do_not_overlap():

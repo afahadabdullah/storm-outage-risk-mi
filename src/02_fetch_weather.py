@@ -31,7 +31,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 
 from src.common.config import PATHS, base_parser, config_from_args
-from src.common.era5_io import (era5_file_status, era5_path, publish_era5_download)  # noqa: F401
+from src.common.era5_io import (
+    era5_file_status,
+    era5_path,
+    publish_era5_download,
+)
 from src.common.logio import dir_size_mb, get_logger, record, timed
 
 log = get_logger("02_weather")
@@ -234,7 +238,7 @@ def fetch_gefs(cfg, init: pd.Timestamp, cycle: int = 0, force: bool = False) -> 
                 try:
                     idx = s3.get_object(Bucket=bucket, Key=key + ".idx")["Body"] \
                             .read().decode()
-                except Exception as err:                       # noqa: BLE001
+                except Exception as err:
                     code = getattr(err, "response", {}).get("Error", {}).get("Code")
                     if code not in {"NoSuchKey", "404", "NotFound"}:
                         raise
@@ -294,10 +298,11 @@ def fetch_canopy(cfg, force: bool = False) -> Path | None:
         log.info("cached canopy %s", out.name)
         return out
     try:
-        import rioxarray  # noqa: F401
-        import requests
         import zipfile
+
         import rasterio
+        import requests
+        import rioxarray  # noqa: F401
         from rasterio.mask import mask
         from shapely.geometry import box
 
@@ -325,7 +330,7 @@ def fetch_canopy(cfg, force: bool = False) -> Path | None:
             dst.write(arr)
         log.info("canopy clipped -> %s (%.1f MB)", out.name, dir_size_mb(out))
         return out
-    except Exception as err:                                   # noqa: BLE001
+    except Exception as err:
         log.warning("canopy fetch failed (%s: %s). Phase 1 does not gate on "
                     "canopy; features that use it will be NaN-filled. Get it "
                     "from https://www.mrlc.gov/data/type/nlcd-tree-canopy-cover "

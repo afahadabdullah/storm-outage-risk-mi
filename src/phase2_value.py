@@ -123,7 +123,7 @@ def plot_cost_loss(curves: pd.DataFrame) -> Path:
                 marker="o", ms=4, lw=1.8 if lead == 0 else 1.2,
                 ls="-" if lead == 0 else "--", label=label)
     ax.axhline(0, color="#6B7A88", lw=1)
-    ax.set_xlabel("cost–loss ratio  C/L")
+    ax.set_xlabel("cost-loss ratio  C/L")
     ax.set_ylabel("relative economic value")
     ax.set_title("Value of acting on the forecast, by lead time")
     ax.legend(fontsize=8)

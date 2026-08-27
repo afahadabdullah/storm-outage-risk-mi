@@ -8,10 +8,9 @@ actually want at 11pm on day one. So `check` records and returns a bool;
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 
 from .config import PATHS
-
 
 # Which phase's gate file `book()` writes to. Phase 2 sets this to 2 at start
 # of run; without it every Phase 2 gate record lands in phase1_gates.json and

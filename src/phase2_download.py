@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
-from src.common.config import PATHS, Config, ROOT, load_config
+from src.common.config import PATHS, ROOT, Config, load_config
 from src.common.era5_io import era5_file_status, publish_era5_download
 from src.common.geo import fetch_counties, load_counties
 from src.common.logio import dir_size_mb, get_logger
@@ -70,7 +70,7 @@ def fetch_outages(cfg: Config, years: list[int], force: bool = False) -> None:
     if missing_locally:
         try:
             have = available_eaglei_years(cfg)
-        except Exception as err:                              # noqa: BLE001
+        except Exception as err:
             log.warning("could not list the figshare article (%s); proceeding "
                         "year by year", err)
         else:

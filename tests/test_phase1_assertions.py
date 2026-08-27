@@ -79,6 +79,7 @@ def test_quantile_mapping_moves_the_mean_toward_the_reference():
 def test_zipped_cds_response_is_merged_to_netcdf(tmp_path):
     """CDS may zip instant and accumulated variables despite `unarchived`."""
     import xarray as xr
+
     from src.common.era5_io import era5_file_status, publish_era5_download
 
     coords = {"valid_time": pd.date_range("2019-07-19", periods=2, freq="1h"),
@@ -183,6 +184,7 @@ def test_monte_carlo_carries_uncertainty():
 
 def test_area_weights_sum_to_one_in_equal_area_crs():
     from scipy import sparse
+
     from src.common.geo import weights_path
     p = weights_path(CFG)
     if not p.exists():
