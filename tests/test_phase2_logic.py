@@ -16,16 +16,16 @@ from src.phase2_train import (
 
 def test_phase2_frozen_splits_do_not_overlap():
     frame = pd.DataFrame({
-        "date": pd.to_datetime(["2021-12-31", "2022-01-01", "2022-12-31",
-                                "2023-01-01", "2023-12-31"])
+        "date": pd.to_datetime(["2019-12-31", "2020-01-01", "2020-07-31",
+                                "2020-08-01", "2023-01-01", "2023-12-31"])
     })
-    cfg = Config({"train_start": "2018-01-01", "train_end": "2021-12-31",
-                  "val_start": "2022-01-01", "val_end": "2022-12-31",
+    cfg = Config({"train_start": "2018-01-01", "train_end": "2019-12-31",
+                  "val_start": "2020-01-01", "val_end": "2020-07-31",
                   "test_start": "2023-01-01", "test_end": "2023-12-31"})
     split = masks(frame, cfg)
-    assert split["train"].tolist() == [True, False, False, False, False]
-    assert split["val"].tolist() == [False, True, True, False, False]
-    assert split["test"].tolist() == [False, False, False, True, True]
+    assert split["train"].tolist() == [True, False, False, False, False, False]
+    assert split["val"].tolist() == [False, True, True, False, False, False]
+    assert split["test"].tolist() == [False, False, False, False, True, True]
     assert not (split["train"] & split["val"]).any()
     assert not (split["val"] & split["test"]).any()
 
@@ -41,7 +41,7 @@ def test_storm_blocking_keeps_nearby_days_in_one_group():
 
 def _statewide_frame(n_counties: int, per_county_rate: float, seed: int = 0):
     """A frame at the shape the real study has, not a toy eight rows."""
-    dates = pd.date_range("2018-01-01", "2022-12-31", freq="D")
+    dates = pd.date_range("2018-01-01", "2020-07-31", freq="D")
     fips = [f"26{i:03d}" for i in range(1, 2 * n_counties, 2)]
     frame = pd.MultiIndex.from_product(
         [fips, dates], names=["fips", "date"]).to_frame(index=False)

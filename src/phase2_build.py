@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 """Build the multi-year Phase 2 event and county-day feature tables.
 
-The default stops at the end of validation (2022). Building 2023 requires an
-explicit acknowledgement so the held-out outcomes are not opened accidentally.
+The default stops at the configured validation end (2020-07-31). Building 2023
+requires an explicit acknowledgement so held-out outcomes are not opened
+accidentally.
 """
 from __future__ import annotations
 

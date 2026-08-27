@@ -40,7 +40,7 @@ STEPS = [
     ("07_forecast_cases.py", "GEFS forecast, one lead time"),
     ("08_decision_value.py", "cost-loss and break-even"),
 ]
-SYNTH_START = "2019-07-19"          # inside the 2018-2021 training window
+SYNTH_START = "2019-07-19"          # inside the 2018-2019 training window
 
 
 def run_step(script: str, cfg_path: str, phase1_path: str) -> None:
@@ -111,8 +111,8 @@ pipeline is small.
 - [ ] Keep: download code, join logic, weight matrix, assertion suite, this table.
 - [ ] `make test` -- the assertions are now a test module that runs on every
       Phase 2 execution.
-- [ ] Confirm `region.yaml` splits are the frozen 2018-2021 / 2022 / 2023
-      boundaries and that nothing in Phase 1 touched 2023.
+- [ ] Confirm `region.yaml` splits are the frozen 2018-2019 / Jan-Jul 2020 /
+      2023 boundaries and that nothing in Phase 1 touched 2023.
 """)
     return report
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """Fit, validate, and once-only test the full Phase 2 hurdle model.
 
-Default mode fits on 2018--2021 and calibrates/evaluates on 2022. The held-out
-2023 test is scored only with ``--evaluate-test``; that mode loads the frozen
-bundle and never refits it. Cross-validation summaries are computed on pre-test
-data only.
+Default mode fits on 2018--2019 and calibrates/evaluates on January--July 2020.
+The held-out 2023 test is scored only with ``--evaluate-test``; that mode loads
+the frozen bundle and never refits it. Cross-validation summaries are computed
+on pre-test data only.
 """
 from __future__ import annotations
 
@@ -66,16 +66,16 @@ def lgb_classifier(cfg: Config, n_estimators: int | None = None):
 def fit_occurrence(frame: pd.DataFrame, feats: list[str], split, cfg: Config):
     """Fit the occurrence model and its isotonic calibrator (spec 6.1).
 
-    Returns the model, the calibrator fitted on the whole validation year (the
+    Returns the model, the calibrator fitted on the whole validation period (the
     one that goes into the frozen bundle and scores the test year), and an
     OUT-OF-FOLD calibrated probability for each validation row.
 
     That third return value is the point. Isotonic is a flexible non-parametric
     fit; scoring it on the same rows it was fitted on flatters every occurrence
     metric and makes the reliability diagram look better calibrated than the
-    model is. The honest validation number comes from K-fold-within-2022; the
-    full-year calibrator is still what ships, because for the test year 2022 is
-    genuinely out of sample.
+    model is. The honest validation number comes from K-fold calibration within
+    the configured validation period; the full-period calibrator is still what
+    ships, because that period is genuinely out of sample for the fitted model.
     """
     from sklearn.isotonic import IsotonicRegression
     from sklearn.model_selection import StratifiedKFold
