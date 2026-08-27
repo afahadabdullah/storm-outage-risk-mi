@@ -17,6 +17,18 @@ converted into a decision-economic answer.
 
 ---
 
+## Phase 2 workflow
+
+![Phase 2 workflow: Michigan weather, outage, canopy, and forecast data are aggregated to county-day features, divided into frozen train, validation, and final-test periods, modeled probabilistically, and converted into forecast risk and decision value.](docs/assets/phase2-workflow.png)
+
+The diagram shows the production data flow, not model results. ERA5 and
+EAGLE-I supply the historical hazard and consequence record; static canopy and
+county geometry add exposure context; the frozen 2018–2021 / 2022 / 2023 split
+feeds occurrence, magnitude, and restoration models; and GEFS drives the two
+2023 forecast case studies and decision-value analysis.
+
+---
+
 ## Quickstart
 
 ```bash
