@@ -91,8 +91,8 @@ success through Slurm accounting, and does not submit the next stage until the
 current one succeeds. The order is annual EAGLE-I outages, one regional ARCO
 cache, the residual ERA5 monthly array, 2021 NLCD tree-canopy statistics, the
 2018–2022 build, training/validation, GEFS, and the application stages. The
-ERA5 array still permits two monthly tasks at once; no other Phase 2 stage
-overlaps it. A failed stage stops the controller immediately.
+ERA5 array permits five monthly tasks at once; no other Phase 2 stage overlaps
+it. A failed stage stops the controller immediately.
 
 Because the controller remains attached while waiting, run it in a persistent
 `tmux`, `screen`, or JupyterHub terminal. If that terminal is terminated, the

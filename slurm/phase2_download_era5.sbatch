@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=storm-p2-era5
-#SBATCH --array=0-71%2
+#SBATCH --array=0-71%5
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=16G
 #SBATCH --time=12:00:00
