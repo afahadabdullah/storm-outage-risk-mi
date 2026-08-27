@@ -394,6 +394,37 @@ def _align_cds_grid_to_arco(arco, cds):
     return aligned
 
 
+def era5_part_status(path: Path, year: int, month: int,
+                     variables: list[str]) -> tuple[bool, str]:
+    """Validate a reusable ARCO or CDS component of a hybrid month."""
+    valid, reason = era5_file_status(path)
+    if not valid:
+        return valid, reason
+
+    import xarray as xr
+
+    expected = {ERA5_TO_SHORT[name] for name in variables}
+    expected_hours = _month_bounds(year, month)[2] * 24
+    try:
+        with xr.open_dataset(path) as ds:
+            time_name = next((name for name in ("time", "valid_time")
+                              if name in ds.coords or name in ds.dims), None)
+            available = {ERA5_TO_SHORT.get(name, name) for name in ds.data_vars}
+            missing = sorted(expected - available)
+            if missing:
+                return False, f"missing variables {missing}"
+            if time_name is None or ds.sizes.get(time_name) != expected_hours:
+                return False, (f"has {ds.sizes.get(time_name, 0)} hours; "
+                               f"expected {expected_hours}")
+            missing_coordinates = [name for name in ("latitude", "longitude")
+                                   if name not in ds.coords]
+            if missing_coordinates:
+                return False, f"missing coordinates {missing_coordinates}"
+    except Exception as err:
+        return False, f"{type(err).__name__}: {err}"
+    return True, "ok"
+
+
 def era5_month_status(path: Path, cfg: Config, year: int,
                       month: int) -> tuple[bool, str]:
     valid, reason = era5_file_status(path)
@@ -432,12 +463,15 @@ def fetch_era5_month(cfg: Config, year: int, month: int,
     arco_tmp = out.with_name(out.name + ".arco.part.nc")
     cds_download = out.with_name(out.name + ".cds.download.part")
     cds_tmp = out.with_name(out.name + ".cds.part.nc")
-    partials = [tmp, arco_tmp, cds_download, cds_tmp]
-    stale = [path for path in partials if path.exists()]
-    if stale:
+    if tmp.exists():
+        valid, reason = era5_month_status(tmp, cfg, year, month)
+        if valid:
+            log.info("recovering completed hybrid ERA5 month %s", tmp.name)
+            tmp.replace(out)
+            return out
         raise SystemExit(
-            f"Partial ERA5 files exist: {[str(path) for path in stale]}. Confirm "
-            "no downloader owns them, then move them aside before retrying.")
+            f"Incomplete merged ERA5 file {tmp} ({reason}). Confirm no downloader "
+            "owns it, then move it aside before retrying.")
 
     backend = str(cfg.get("era5_backend", "cds")).lower()
     variables = list(cfg["era5_variables"])
@@ -448,11 +482,36 @@ def fetch_era5_month(cfg: Config, year: int, month: int,
         import xarray as xr
 
         arco_variables, cds_variables = era5_source_variables(variables)
-        _write_arco_month(cfg, year, month, arco_variables, arco_tmp)
+        valid, reason = era5_part_status(arco_tmp, year, month, arco_variables)
+        if valid:
+            log.info("reusing validated ARCO part %s", arco_tmp.name)
+        elif arco_tmp.exists():
+            raise SystemExit(
+                f"Incomplete ARCO part {arco_tmp} ({reason}). Confirm no downloader "
+                "owns it, then move it aside before retrying.")
+        else:
+            _write_arco_month(cfg, year, month, arco_variables, arco_tmp)
         parts = [_load_era5_part(arco_tmp)]
         if cds_variables:
-            _download_cds_month(cfg, year, month, cds_variables, cds_download)
-            publish_era5_download(cds_download, cds_tmp)
+            valid, reason = era5_part_status(cds_tmp, year, month, cds_variables)
+            if valid:
+                log.info("reusing validated CDS part %s", cds_tmp.name)
+            elif cds_tmp.exists():
+                raise SystemExit(
+                    f"Incomplete CDS part {cds_tmp} ({reason}). Confirm no downloader "
+                    "owns it, then move it aside before retrying.")
+            elif cds_download.exists():
+                log.info("validating saved CDS download %s", cds_download.name)
+                publish_era5_download(cds_download, cds_tmp)
+                valid, reason = era5_part_status(cds_tmp, year, month, cds_variables)
+                if not valid:
+                    raise SystemExit(
+                        f"Incomplete CDS part {cds_tmp} ({reason}). Confirm no downloader "
+                        "owns it, then move it aside before retrying.")
+                log.info("reusing validated CDS part %s", cds_tmp.name)
+            else:
+                _download_cds_month(cfg, year, month, cds_variables, cds_download)
+                publish_era5_download(cds_download, cds_tmp)
             parts.append(_align_cds_grid_to_arco(parts[0], _load_era5_part(cds_tmp)))
         try:
             merged = xr.merge(parts, compat="override", join="exact")

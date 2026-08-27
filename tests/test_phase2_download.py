@@ -149,3 +149,45 @@ def test_arco_and_cds_parts_publish_one_complete_month(tmp_path, monkeypatch):
         assert set(ds.data_vars) == set(ERA5_TO_SHORT.values())
         assert ds.sizes["time"] == 31 * 24
     assert not list(tmp_path.glob("*.part*"))
+
+
+def test_hybrid_era5_reuses_valid_parts_after_merge_failure(tmp_path, monkeypatch):
+    times = pd.date_range("2020-01-01", "2020-01-31 23:00", freq="1h")
+    coords = {"time": times, "latitude": [44.0], "longitude": [-85.0]}
+    shape = (len(times), 1, 1)
+    cfg = Config({
+        "bbox": [-90.5, 41.6, -82.3, 48.3],
+        "era5_backend": "arco",
+        "era5_variables": ERA5_VARIABLES,
+    })
+    out = tmp_path / "era5_202001.nc"
+    arco_tmp = out.with_name(out.name + ".arco.part.nc")
+    cds_tmp = out.with_name(out.name + ".cds.part.nc")
+    monkeypatch.setattr(downloader, "era5_month_path", lambda _year, _month: out)
+
+    arco_variables, cds_variables = era5_source_variables(ERA5_VARIABLES)
+    xr.Dataset(
+        {ERA5_TO_SHORT[name]: (("time", "latitude", "longitude"),
+                                np.ones(shape, dtype=np.float32))
+         for name in arco_variables},
+        coords=coords,
+    ).to_netcdf(arco_tmp, engine="netcdf4")
+    xr.Dataset(
+        {ERA5_TO_SHORT[name]: (("valid_time", "latitude", "longitude"),
+                                np.ones(shape, dtype=np.float32))
+         for name in cds_variables},
+        coords={**coords, "valid_time": coords["time"]},
+    ).drop_vars("time").to_netcdf(cds_tmp, engine="netcdf4")
+
+    def should_not_download(*_args, **_kwargs):
+        raise AssertionError("a validated part should be reused")
+
+    monkeypatch.setattr(downloader, "_write_arco_month", should_not_download)
+    monkeypatch.setattr(downloader, "_download_cds_month", should_not_download)
+
+    result = downloader.fetch_era5_month(cfg, 2020, 1)
+
+    assert result == out
+    valid, reason = downloader.era5_month_status(out, cfg, 2020, 1)
+    assert valid, reason
+    assert not list(tmp_path.glob("*.part*"))
