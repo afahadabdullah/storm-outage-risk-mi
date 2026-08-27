@@ -60,6 +60,41 @@ def load_mcc() -> pd.Series:
     return pd.Series(values.to_numpy(), index=frame[fips], dtype=float)
 
 
+def bound_outages_by_mcc(hourly: pd.DataFrame, coverage: dict) -> pd.DataFrame:
+    """Cap physically impossible outage counts and retain an audit record.
+
+    MCC is a modeled county customer estimate rather than a contemporaneous
+    utility census.  EAGLE-I occasionally reports a county count above that
+    estimate.  A fraction above one cannot be used by the event model, so cap
+    only those observations and make the intervention explicit in coverage.
+    """
+    bad = hourly.customers_out.gt(hourly.mcc)
+    if not bad.any():
+        coverage["outage_rows_capped_to_mcc"] = {
+            "n_rows": 0, "fraction_of_rows": 0.0, "counties": [],
+            "max_raw_fraction": 1.0,
+        }
+        return hourly
+
+    raw_fraction = hourly.loc[bad, "customers_out"] / hourly.loc[bad, "mcc"]
+    counties = sorted(hourly.loc[bad, "fips"].astype(str).unique())
+    coverage["outage_rows_capped_to_mcc"] = {
+        "n_rows": int(bad.sum()),
+        "fraction_of_rows": float(bad.mean()),
+        "counties": counties,
+        "max_raw_fraction": float(raw_fraction.max()),
+    }
+    log.warning(
+        "capping %d physically impossible outage rows (%.6f%%) to MCC across "
+        "%d counties %s; maximum raw fraction %.4f",
+        int(bad.sum()), 100 * float(bad.mean()), len(counties), counties,
+        float(raw_fraction.max()),
+    )
+    bounded = hourly.copy()
+    bounded.loc[bad, "customers_out"] = bounded.loc[bad, "mcc"]
+    return bounded
+
+
 def read_outage_year(cfg: Config, year: int) -> pd.DataFrame:
     path = PATHS.raw / f"eaglei_outages_{year}.csv"
     if not path.exists():
@@ -148,9 +183,12 @@ def build_hourly(cfg: Config, end: pd.Timestamp) -> tuple[pd.DataFrame, dict]:
     if hourly.mcc.isna().any() or hourly.mcc.le(0).any():
         missing = sorted(hourly.loc[hourly.mcc.isna() | hourly.mcc.le(0), "fips"].unique())
         raise ValueError(f"MCC missing/non-positive for reporting counties: {missing}")
+    hourly = bound_outages_by_mcc(hourly, coverage)
     hourly["frac_out"] = hourly.customers_out / hourly.mcc
     if hourly.frac_out.gt(1).any():
-        raise ValueError(f"frac_out > 1 (max={hourly.frac_out.max():.4f})")
+        raise AssertionError(
+            f"frac_out remained > 1 after MCC bounding "
+            f"(max={hourly.frac_out.max():.4f})")
 
     hourly = hourly.sort_values(["fips", "time"])
     window = baseline_days * 24
