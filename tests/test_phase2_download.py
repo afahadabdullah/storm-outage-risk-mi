@@ -10,6 +10,7 @@ from src.phase2_download import (
     ARCO_SOURCE_BY_CDS,
     ERA5_TO_SHORT,
     _select_arco_month,
+    era5_arco_cache_status,
     era5_source_variables,
 )
 
@@ -32,6 +33,9 @@ ERA5_VARIABLES = [
 def test_era5_arco_split_keeps_all_required_predictors():
     arco, cds = era5_source_variables(ERA5_VARIABLES)
     assert len(arco) == 7
+    assert {ARCO_SOURCE_BY_CDS[name] for name in arco} == {
+        "u10", "v10", "fg10", "u100", "v100", "tp", "t2m",
+    }
     assert set(cds) == {
         "volumetric_soil_water_layer_1",
         "volumetric_soil_water_layer_2",
@@ -65,6 +69,39 @@ def test_arco_month_is_sliced_before_loading():
     assert float(subset.latitude.min()) >= 41.6
     assert float(subset.longitude.max()) <= -82.3
     assert float(subset.longitude.min()) >= -90.5
+
+
+def test_local_arco_cache_maps_live_keys_to_pipeline_names(tmp_path, monkeypatch):
+    times = pd.date_range("2020-01-01", "2020-01-31 23:00", freq="1h")
+    coords = {"time": times, "latitude": [44.0], "longitude": [-85.0]}
+    shape = (len(times), 1, 1)
+    cfg = Config({
+        "bbox": [-90.5, 41.6, -82.3, 48.3],
+        "train_start": "2020-01-01",
+        "test_end": "2020-01-31",
+        "era5_variables": ERA5_VARIABLES,
+    })
+    cache = tmp_path / "era5_arco_2020_2020.nc"
+    output = tmp_path / "era5_202001.arco.part.nc"
+    arco_variables, _ = era5_source_variables(ERA5_VARIABLES)
+    xr.Dataset(
+        {ARCO_SOURCE_BY_CDS[name]: (
+            ("time", "latitude", "longitude"),
+            np.ones(shape, dtype=np.float32),
+        ) for name in arco_variables},
+        coords=coords,
+    ).to_netcdf(cache, engine="netcdf4")
+    monkeypatch.setattr(downloader, "era5_arco_cache_path", lambda _cfg: cache)
+
+    valid, reason = era5_arco_cache_status(cache, cfg)
+    assert valid, reason
+    downloader._write_arco_month(cfg, 2020, 1, arco_variables, output)
+
+    with xr.open_dataset(output) as ds:
+        assert set(ds.data_vars) == {
+            "u10", "v10", "i10fg", "u100", "v100", "tp", "t2m",
+        }
+        assert ds.sizes["time"] == 31 * 24
 
 
 def test_arco_and_cds_parts_publish_one_complete_month(tmp_path, monkeypatch):

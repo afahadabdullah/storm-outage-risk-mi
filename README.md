@@ -67,10 +67,10 @@ make phase2-submit       # sequential downloads -> build -> train/validate
 sbatch slurm/phase2_final_test.sbatch
 ```
 
-Phase 2 ERA5 uses ECMWF's geo-chunked ARCO store for the seven fields it
-provides, slices the Michigan bbox before saving, and merges five residual CDS
-fields into each monthly NetCDF. Set `era5_backend: cds` in `phase2.yaml` only
-when the ARCO service is unavailable.
+Phase 2 ERA5 reads the seven available fields from ECMWF's geo-chunked ARCO
+store once, saving one Michigan-only 2018–2023 cache. The restartable monthly
+array then merges five residual CDS fields into each monthly NetCDF. Set
+`era5_backend: cds` in `phase2.yaml` only when ARCO is unavailable.
 
 See [`docs/PHASE2_RUNBOOK.md`](docs/PHASE2_RUNBOOK.md) for outputs, restart
 commands, resource requests, and the test-year lock.

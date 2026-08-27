@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """Download the complete Phase 2 inputs in restartable pieces.
 
-Outages are annual EAGLE-I CSVs. Phase 2 ERA5 uses ECMWF's geo-chunked ARCO
-store for the variables it carries and CDS for the five residual variables;
-each monthly task slices the Michigan bbox before writing one merged NetCDF.
+Outages are annual EAGLE-I CSVs. Phase 2 ERA5 downloads one Michigan-only,
+full-study slice from ECMWF's geo-chunked ARCO store, then combines local
+monthly slices with five residual variables from CDS in merged NetCDF files.
 GEFS is fetched only for the frozen 2023 case studies and four lead times.
 Downloading test-year bytes is not model evaluation; ``phase2_train`` still
 refuses to read the test rows without ``--evaluate-test``.
@@ -45,17 +45,17 @@ ERA5_TO_SHORT = {
     "snow_depth": "sd",
 }
 
-# The current ECMWF ERA5 ARCO surface cube carries these seven fields. Gust
-# has a descriptive ARCO name but is the same i10fg parameter used by CDS.
+# The ECMWF product table lists descriptive CDS names, while the live Zarr
+# arrays use these GRIB-style short keys. Gust is named fg10 in ARCO and i10fg
+# in CDS NetCDF, but both represent the same parameter.
 ARCO_SOURCE_BY_CDS = {
-    "10m_u_component_of_wind": "10m_u_component_of_wind",
-    "10m_v_component_of_wind": "10m_v_component_of_wind",
-    "instantaneous_10m_wind_gust":
-        "10m_wind_gust_since_previous_post_processing",
-    "100m_u_component_of_wind": "100m_u_component_of_wind",
-    "100m_v_component_of_wind": "100m_v_component_of_wind",
-    "total_precipitation": "total_precipitation",
-    "2m_temperature": "2m_temperature",
+    "10m_u_component_of_wind": "u10",
+    "10m_v_component_of_wind": "v10",
+    "instantaneous_10m_wind_gust": "fg10",
+    "100m_u_component_of_wind": "u100",
+    "100m_v_component_of_wind": "v100",
+    "total_precipitation": "tp",
+    "2m_temperature": "t2m",
 }
 
 
@@ -126,6 +126,11 @@ def era5_month_path(year: int, month: int) -> Path:
     return PATHS.raw / "era5_monthly" / f"era5_{year}{month:02d}.nc"
 
 
+def era5_arco_cache_path(cfg: Config) -> Path:
+    years = study_years(cfg)
+    return PATHS.raw / "era5_arco" / f"era5_arco_{years[0]}_{years[-1]}.nc"
+
+
 def era5_source_variables(variables: list[str]) -> tuple[list[str], list[str]]:
     """Split requested fields between ECMWF ARCO and residual CDS access."""
     unknown = sorted(set(variables) - set(ERA5_TO_SHORT))
@@ -143,18 +148,20 @@ def _month_bounds(year: int, month: int) -> tuple[pd.Timestamp, pd.Timestamp, in
     return start, end, n_days
 
 
-def _select_arco_month(ds, cfg: Config, year: int, month: int,
-                       variables: list[str]):
-    """Select time, variables and bbox lazily, before any ARCO bytes are loaded."""
+def _select_arco_period(ds, cfg: Config, start: pd.Timestamp, end: pd.Timestamp,
+                        variables: list[str], expected_hours: int,
+                        rename: bool = True):
+    """Select fields, time and bbox lazily, before any ARCO bytes are loaded."""
     source_names = [ARCO_SOURCE_BY_CDS[name] for name in variables]
     missing = sorted(set(source_names) - set(ds.data_vars))
     if missing:
-        raise RuntimeError(f"ECMWF ARCO store is missing expected fields: {missing}")
+        raise RuntimeError(
+            f"ECMWF ARCO store is missing expected fields: {missing}; live keys "
+            f"are {sorted(ds.data_vars)}")
     for coord in ("time", "latitude", "longitude"):
         if coord not in ds.coords:
             raise RuntimeError(f"ECMWF ARCO store has no {coord!r} coordinate")
 
-    start, end, n_days = _month_bounds(year, month)
     w, s, e, n = (float(value) for value in cfg["bbox"])
     lat = ds["latitude"]
     lat_descends = float(lat.isel(latitude=0)) > float(lat.isel(latitude=-1))
@@ -172,16 +179,25 @@ def _select_arco_month(ds, cfg: Config, year: int, month: int,
         subset = subset.assign_coords(
             longitude=((subset.longitude + 180) % 360) - 180).sortby("longitude")
 
-    expected_hours = n_days * 24
     if subset.sizes.get("time") != expected_hours:
         raise RuntimeError(
-            f"ECMWF ARCO {year:04d}-{month:02d} returned "
+            f"ECMWF ARCO {start}..{end} returned "
             f"{subset.sizes.get('time', 0)} hours; expected {expected_hours}")
     if subset.sizes.get("latitude", 0) == 0 or subset.sizes.get("longitude", 0) == 0:
         raise RuntimeError(f"ECMWF ARCO bbox selection is empty: {cfg['bbox']}")
 
-    rename = {ARCO_SOURCE_BY_CDS[name]: ERA5_TO_SHORT[name] for name in variables}
-    return subset.rename(rename)
+    if rename:
+        output_names = {ARCO_SOURCE_BY_CDS[name]: ERA5_TO_SHORT[name]
+                        for name in variables}
+        subset = subset.rename(output_names)
+    return subset
+
+
+def _select_arco_month(ds, cfg: Config, year: int, month: int,
+                       variables: list[str]):
+    """Select one cached ARCO month and convert its keys to pipeline names."""
+    start, end, n_days = _month_bounds(year, month)
+    return _select_arco_period(ds, cfg, start, end, variables, n_days * 24)
 
 
 def _cds_api_token() -> str:
@@ -204,13 +220,56 @@ def _cds_api_token() -> str:
     return token
 
 
-def _write_arco_month(cfg: Config, year: int, month: int,
-                      variables: list[str], dest: Path) -> None:
+def era5_arco_cache_status(path: Path, cfg: Config) -> tuple[bool, str]:
+    valid, reason = era5_file_status(path)
+    if not valid:
+        return valid, reason
+
     import xarray as xr
 
+    variables, _ = era5_source_variables(list(cfg["era5_variables"]))
+    expected = {ARCO_SOURCE_BY_CDS[name] for name in variables}
+    start = pd.Timestamp(cfg["train_start"])
+    end = pd.Timestamp(cfg["test_end"]) + pd.Timedelta(hours=23)
+    expected_hours = int((end - start) / pd.Timedelta(hours=1)) + 1
+    try:
+        with xr.open_dataset(path) as ds:
+            missing = sorted(expected - set(ds.data_vars))
+            if missing:
+                return False, f"missing ARCO variables {missing}"
+            if ds.sizes.get("time") != expected_hours:
+                return False, (f"has {ds.sizes.get('time', 0)} hours; "
+                               f"expected {expected_hours}")
+    except Exception as err:
+        return False, f"{type(err).__name__}: {err}"
+    return True, "ok"
+
+
+def fetch_era5_arco_cache(cfg: Config, force: bool = False) -> Path:
+    """Fetch the full-study regional ARCO slice once, matching its time chunks."""
+    import xarray as xr
+
+    out = era5_arco_cache_path(cfg)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(out.suffix + ".part")
+    if out.exists() and not force:
+        valid, reason = era5_arco_cache_status(out, cfg)
+        if valid:
+            log.info("cached regional ARCO %s (%.1f MB)", out.name, dir_size_mb(out))
+            return out
+        log.warning("invalid regional ARCO cache %s (%s); replacing", out, reason)
+    if tmp.exists():
+        raise SystemExit(
+            f"{tmp} exists. Confirm no ARCO cache job owns it, then move the "
+            "stale partial file aside before retrying.")
+
+    variables, _ = era5_source_variables(list(cfg["era5_variables"]))
+    start = pd.Timestamp(cfg["train_start"])
+    end = pd.Timestamp(cfg["test_end"]) + pd.Timedelta(hours=23)
+    expected_hours = int((end - start) / pd.Timedelta(hours=1)) + 1
     url = cfg["sources"]["era5_arco_geo_url"]
-    log.info("ARCO ERA5 %04d-%02d: bbox first, %d variables", year, month,
-             len(variables))
+    log.info("ARCO ERA5 %s..%s: one regional slice, %d variables",
+             start.date(), end.date(), len(variables))
     ds = xr.open_zarr(
         url,
         consolidated=True,
@@ -219,12 +278,39 @@ def _write_arco_month(cfg: Config, year: int, month: int,
         },
     )
     try:
-        subset = _select_arco_month(ds, cfg, year, month, variables)
+        subset = _select_arco_period(
+            ds, cfg, start, end, variables, expected_hours, rename=False)
         encoding = {name: {"zlib": True, "complevel": 1}
                     for name in subset.data_vars}
-        subset.to_netcdf(dest, engine="netcdf4", encoding=encoding)
+        subset.to_netcdf(tmp, engine="netcdf4", encoding=encoding)
     finally:
         ds.close()
+    valid, reason = era5_arco_cache_status(tmp, cfg)
+    if not valid:
+        raise RuntimeError(f"regional ARCO cache is invalid ({reason})")
+    tmp.replace(out)
+    log.info("published regional ARCO cache %s (%.1f MB)", out.name, dir_size_mb(out))
+    return out
+
+
+def _write_arco_month(cfg: Config, year: int, month: int,
+                      variables: list[str], dest: Path) -> None:
+    import xarray as xr
+
+    cache = era5_arco_cache_path(cfg)
+    valid, reason = era5_arco_cache_status(cache, cfg)
+    if not valid:
+        raise SystemExit(
+            f"Regional ARCO cache {cache} is not ready ({reason}). Run "
+            "`sbatch slurm/phase2_download_arco.sbatch` first.")
+    log.info("local ARCO cache %04d-%02d: %d variables", year, month,
+             len(variables))
+    with xr.open_dataset(cache) as ds:
+        subset = _select_arco_month(ds, cfg, year, month, variables).load()
+    encoding = {name: {"zlib": True, "complevel": 1}
+                for name in subset.data_vars}
+    subset.to_netcdf(dest, engine="netcdf4", encoding=encoding)
+    subset.close()
 
 
 def _download_cds_month(cfg: Config, year: int, month: int,
@@ -467,8 +553,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default=str(ROOT / "config" / "region.yaml"))
     ap.add_argument("--phase2", default=str(ROOT / "config" / "phase2.yaml"))
-    ap.add_argument("--only", choices=["all", "outages", "era5", "gefs", "canopy"],
-                    default="all")
+    ap.add_argument(
+        "--only",
+        choices=["all", "outages", "era5-arco", "era5", "gefs", "canopy"],
+        default="all",
+    )
     ap.add_argument("--years", help="comma-separated subset; default frozen full period")
     ap.add_argument("--months", default="1,2,3,4,5,6,7,8,9,10,11,12")
     ap.add_argument("--case", action="append",
@@ -492,6 +581,9 @@ def main() -> None:
     if args.only in ("all", "outages"):
         outage_years = sorted(set(years) | {pd.Timestamp(cfg["train_start"]).year - 1})
         fetch_outages(cfg, outage_years, force=args.force)
+    if (args.only in ("all", "era5-arco")
+            and str(cfg.get("era5_backend", "cds")).lower() == "arco"):
+        fetch_era5_arco_cache(cfg, force=args.force)
     if args.only in ("all", "era5"):
         fetch_era5(cfg, years, months, force=args.force)
     if args.only in ("all", "canopy"):

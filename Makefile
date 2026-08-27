@@ -19,7 +19,8 @@ SRC      = src
 .PHONY: help env env-pip env-lock doctor doctor-phase2 window fetch weather events features models compose forecast \
         value phase1 phase1-synthetic phase1-diff gates gates-synthetic test lint \
         clean-phase1 clean-synthetic era5-only phase2-download phase2-download-outages \
-        phase2-download-era5 phase2-download-gefs phase2-download-canopy phase2-build \
+        phase2-download-arco phase2-download-era5 phase2-download-gefs \
+        phase2-download-canopy phase2-build \
         phase2-train phase2 phase2-build-test phase2-test phase2-submit \
         phase2-compose phase2-forecast phase2-forecast-synthetic phase2-value \
         phase2-apply phase2-preflight
@@ -104,7 +105,10 @@ phase2-download: ## all full-study inputs (large; prefer phase2-submit on Slurm)
 phase2-download-outages: ## EAGLE-I 2017 baseline buffer + 2018-2023 study years
 	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only outages
 
-phase2-download-era5: ## monthly ERA5: Michigan-sliced ARCO + 5 residual CDS fields
+phase2-download-arco: ## one Michigan-sliced 2018-2023 ARCO cache
+	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only era5-arco
+
+phase2-download-era5: ## monthly merge: local ARCO cache + 5 residual CDS fields
 	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only era5
 
 phase2-download-gefs: ## 2023 cases, day-5/-3/-2/-1, 31 members

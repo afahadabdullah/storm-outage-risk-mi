@@ -88,8 +88,8 @@ make phase2-submit
 The controller runs preflight, submits one stage at a time, prints its job ID,
 log location, queue state, and elapsed time every 30 seconds, confirms its
 success through Slurm accounting, and does not submit the next stage until the
-current one succeeds. The order is annual
-EAGLE-I outages, the ERA5 monthly array, 2021 NLCD tree-canopy statistics, the
+current one succeeds. The order is annual EAGLE-I outages, one regional ARCO
+cache, the residual ERA5 monthly array, 2021 NLCD tree-canopy statistics, the
 2018–2022 build, training/validation, GEFS, and the application stages. The
 ERA5 array still permits two monthly tasks at once; no other Phase 2 stage
 overlaps it. A failed stage stops the controller immediately.
@@ -120,12 +120,22 @@ Every downloader is cache-aware. A failed monthly task can be restarted:
   src/phase2_download.py --only era5 --years 2020 --months 7
 ```
 
-Each monthly task reads seven fields from ECMWF's geo-chunked ARCO Zarr store,
-selects the Michigan time/bbox slice before loading or saving data, requests
-only the five unavailable fields (CAPE, soil water layers 1/2, snowfall and
-snow depth) from CDS, and atomically publishes one 12-field NetCDF. The ERA5
-array has 72 restartable tasks capped at two concurrent tasks. ARCO avoids CDS
-queueing for most bytes; the residual five-field CDS requests can still queue.
+The ARCO job reads seven fields from ECMWF's geo-chunked Zarr store and saves
+one Michigan-only 2018–2023 cache. This matches the live store's roughly
+7.7-year time chunks and avoids re-reading the same cloud chunks in every
+month. After that cache completes, the 72-task monthly array (two concurrent)
+requests only the five unavailable fields—CAPE, soil water layers 1/2,
+snowfall and snow depth—from CDS, merges the corresponding local ARCO month,
+and atomically publishes one 12-field NetCDF. Residual CDS requests can still
+queue.
+
+For manual submission, preserve this order:
+
+```bash
+sbatch --parsable slurm/phase2_download_arco.sbatch
+# After that job reports COMPLETED:
+sbatch --parsable slurm/phase2_download_era5.sbatch
+```
 
 ARCO requires `zarr`, `fsspec`, and `aiohttp`. For an existing pip environment:
 

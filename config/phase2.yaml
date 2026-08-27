@@ -1,8 +1,8 @@
 # Full-study settings.  Region choices and frozen temporal splits remain in
 # region.yaml; this file contains only execution controls.
 phase: 2
-# ECMWF geo-chunked ARCO supplies 7/12 fields through a chunk-selective Michigan
-# slice; the downloader merges the 5 residual CDS fields into the same monthly
+# ECMWF geo-chunked ARCO supplies 7/12 fields through one 2018-2023 Michigan
+# slice; the monthly array merges the 5 residual CDS fields into the same
 # NetCDF contract consumed by the feature builder. Set to "cds" for fallback.
 era5_backend: arco
 baseline_method: rolling

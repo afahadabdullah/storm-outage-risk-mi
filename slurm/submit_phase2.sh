@@ -93,7 +93,8 @@ run_stage() {
 }
 
 run_stage "outage download" slurm/phase2_download_outages.sbatch
-run_stage "ERA5 monthly download" slurm/phase2_download_era5.sbatch
+run_stage "ERA5 regional ARCO cache" slurm/phase2_download_arco.sbatch
+run_stage "ERA5 residual monthly downloads" slurm/phase2_download_era5.sbatch
 run_stage "canopy download" slurm/phase2_download_static.sbatch
 run_stage "2018-2022 build" slurm/phase2_build.sbatch
 run_stage "training and validation" slurm/phase2_train.sbatch
