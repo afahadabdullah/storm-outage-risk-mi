@@ -11,16 +11,19 @@ by design — a job approaching one is a job that is wrong, not slow.
 
 ## Frozen design
 
-- Train: 2018-01-01 through 2021-12-31.
-- Calibration/validation: 2022 only.
+- Train: 2018-01-01 through 2019-12-31.
+- Calibration/validation: 2020-01-01 through 2020-07-31.
 - Final test: 2023 only, opened once after all choices are frozen.
+- Retrospective 2021 scoring is a separately labeled diagnostic; it never
+  enters fitting, calibration, or model selection.
 - Outage baseline: rolling 30-day 10th percentile. December 2017 is downloaded
   only as lookback context and is never a model row.
 - Reporting cohort: fixed by the **train + validation** years. A county whose
   coverage changes in the test year is reported, never silently dropped — the
   cohort is stored in the model bundle and re-checked when 2023 is opened.
-- Occurrence: LightGBM plus isotonic calibration fitted on 2022. Reported
-  validation metrics use **out-of-fold** calibrated probabilities within 2022;
+- Occurrence: LightGBM plus isotonic calibration fitted on the January–July
+  2020 validation period. Reported validation metrics use **out-of-fold**
+  calibrated probabilities within that period;
   the in-sample number is kept beside them so the optimism stays visible.
 - Magnitude: NGBoost Normal density in `log1p(customer_hours)` space, with
   LightGBM quantiles as an automatic fallback. Which one actually ran is
@@ -32,7 +35,8 @@ by design — a job approaching one is a job that is wrong, not slow.
 - Baselines (spec §7.3): county-specific climatology, county-specific
   persistence, and the gust > 20 m/s threshold rule.
 - Validation: storm-blocked, leave-one-county-out, and forward-year occurrence
-  CV; proper probabilistic scores for the frozen 2022 validation year.
+  CV; proper probabilistic scores for the frozen January–July 2020 validation
+  period.
 
 ### Storm blocking
 
@@ -90,7 +94,8 @@ log location, queue state, and elapsed time every 30 seconds, confirms its
 success through Slurm accounting, and does not submit the next stage until the
 current one succeeds. The order is annual EAGLE-I outages, one regional ARCO
 cache, the residual ERA5 monthly array, 2021 NLCD tree-canopy statistics, the
-2018–2022 build, training/validation, GEFS, and the application stages. The
+configured training/validation build (through July 2020), training/validation,
+GEFS, and the application stages. The
 ERA5 array permits five monthly tasks at once; no other Phase 2 stage overlaps
 it. A failed stage stops the controller immediately.
 
@@ -161,7 +166,7 @@ data/processed/phase2_cox_ph_test.csv
 data/processed/phase2_coverage_exclusions.json
 data/processed/phase2_composed_metrics.json
 data/processed/phase2_uncertainty_by_lead.csv
-figures/phase2_occurrence_validation_2022.png
+figures/phase2_occurrence_validation_2020.png
 figures/phase2_forecast_*.png
 figures/phase2_cost_loss_value.png
 ```
@@ -169,7 +174,8 @@ figures/phase2_cost_loss_value.png
 Specific things to check rather than glance at:
 
 - **All three CV schemes present** in `phase2_cv_metrics.csv` — `storm_blocked`,
-  `leave_one_county_out`, and four `forward_year` folds (2019–2022). A missing
+  `leave_one_county_out`, and the available `forward_year` folds on the
+  2018–2020 pre-test table. A missing
   scheme is a finding, not a formatting issue.
 - **Leave-one-county-out vs storm-blocked.** If LOCO is much worse, the model is
   memorising county-specific baselines. Spec §7.1 says name it; do.
@@ -280,7 +286,7 @@ make phase2-download-outages
 make phase2-download-era5
 make phase2-download-canopy
 make phase2-download-gefs
-make phase2                 # build through 2022, train, calibrate, validate
+make phase2                 # build through July 2020, train, calibrate, validate
 make phase2-apply           # composition, forecast, decision value
 make phase2-build-test      # only after decisions are frozen
 make phase2-test            # one-time 2023 score

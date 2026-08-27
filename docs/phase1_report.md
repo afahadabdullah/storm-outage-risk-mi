@@ -59,5 +59,5 @@ pipeline is small.
 - [ ] Keep: download code, join logic, weight matrix, assertion suite, this table.
 - [ ] `make test` -- the assertions are now a test module that runs on every
       Phase 2 execution.
-- [ ] Confirm `region.yaml` splits are the frozen 2018-2021 / 2022 / 2023
+- [ ] Confirm `region.yaml` splits are the frozen 2018-2019 / Jan-Jul 2020 / 2023
       boundaries and that nothing in Phase 1 touched 2023.

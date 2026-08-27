@@ -75,7 +75,7 @@ def drop_degenerate(X: pd.DataFrame, gb, tag: str) -> pd.DataFrame:
 
 def chronological_split(df: pd.DataFrame, cfg) -> dict[str, pd.DataFrame]:
     """Phase 1 splits are MEANINGLESS. They exist only to prove the split code
-    runs. Phase 2 uses the frozen 2018-2021 / 2022 / 2023 boundaries."""
+    runs. Phase 2 uses the frozen 2018-2019 / Jan-Jul 2020 / 2023 boundaries."""
     days = sorted(df.date.unique())
     n_tr, n_va = int(cfg.get("train_days", 3)), int(cfg.get("val_days", 1))
     tr, va, te = days[:n_tr], days[n_tr:n_tr + n_va], days[n_tr + n_va:]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Step 0 -- pick the five-day window from the data, not from memory.
 
-  0a  download one full year from the TRAINING window (2018-2021)
+  0a  download one full year from the TRAINING window (2018-2019)
   0b  statewide customers-out at hourly resolution for the whole year
   0c  window = largest peak - 2 days  ...  largest peak + 2 days
 

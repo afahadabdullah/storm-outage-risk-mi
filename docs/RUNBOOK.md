@@ -104,7 +104,7 @@ make fetch                            # EAGLE-I year + MCC + TIGER counties, ~10
 
 `select_window.py` prints the peak, plots the year to
 `figures/phase1_window_selection_<year>.png`, and patches the config. It refuses
-any year outside the 2018–2021 training window — the test year stays closed.
+any year outside the 2018–2019 training window — the test year stays closed.
 
 **Check the printed peak.** Under ~50,000 customers statewide and it will say so
 loudly: either the state filter or the MCC denominator is wrong, and you should

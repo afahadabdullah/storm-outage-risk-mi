@@ -117,10 +117,10 @@ phase2-download-gefs: ## 2023 cases, day-5/-3/-2/-1, 31 members
 phase2-download-canopy: ## required static USFS/NLCD canopy layer
 	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only canopy
 
-phase2-build: ## build 2018-2022 features; does not open 2023 outcomes
+phase2-build: ## build configured training/validation features; does not open 2023 outcomes
 	$(PY) src/phase2_build.py --config $(CFG) --phase2 $(P2) --through validation
 
-phase2-train: ## fit 2018-2021, calibrate and validate on 2022
+phase2-train: ## fit configured training period; calibrate and validate on configured holdout
 	$(PY) src/phase2_train.py --config $(CFG) --phase2 $(P2)
 
 phase2: ## preprocess + train/validate; downloads must already be cached

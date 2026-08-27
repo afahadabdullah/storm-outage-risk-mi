@@ -11,7 +11,7 @@ the physical cause of damage.
 The project asks two linked questions:
 
 1. Given observed weather, what is the distribution of outage occurrence,
-   affected customers, and restoration time for each county-day?
+   customer-hours, and restoration time for each county-day?
 2. Given an ensemble forecast, how does advance knowledge of that distribution
    change a cost-sensitive preparation decision?
 
@@ -22,13 +22,19 @@ deterministic outage estimate.
 
 ## Workflow
 
-![Storm-driven outage risk workflow: Michigan weather, outage, canopy, and forecast data are aggregated to county-day features; historical years support model development and final evaluation; probability distributions are composed into county outage risk and decision value.](docs/assets/project-workflow.png)
+![Storm-driven outage risk workflow: ERA5, EAGLE-I, NLCD, and GEFS inputs are aggregated to county-day features; a three-part probabilistic model produces county risk and decision-value inputs. The small maps and curves are schematic, not reported results.](docs/assets/project-workflow.png)
 
 Historical hazards and outage records are converted from hourly gridded and
-county data into a common county-day table. A frozen temporal design uses
-2018–2021 for fitting, 2022 for validation and model selection, and 2023 for a
-single final evaluation. GEFS ensemble forecasts then drive the 2023 case-study
-scenarios at lead days 5, 3, 2, and 1.
+county data into a common county-day table. The frozen core temporal design
+fits on 2018–2019, calibrates and validates on January–July 2020, and reserves
+2023 for a single final evaluation. The separate 2021 retrospective backtest is
+diagnostic only; it does not tune or refit the model. GEFS ensemble forecasts
+then drive the 2023 case-study scenarios at lead days 5, 3, 2, and 1.
+
+The workflow image is a method schematic: its maps, curves, density shapes,
+and annotated medians illustrate the types of inputs and outputs, rather than
+empirical estimates from a completed run. Replace those panel graphics with
+generated model output before using the figure to report results.
 
 ## Data
 
@@ -65,7 +71,7 @@ precipitation, canopy interactions, and seasonal indicators.
 Three linked models estimate:
 
 - **Occurrence:** probability of any outage event on a county-day.
-- **Magnitude:** conditional customer outage consequence.
+- **Magnitude:** conditional distribution of customer-hours.
 - **Restoration:** conditional duration of an outage event.
 
 The three distributions are sampled jointly through Monte Carlo composition to
