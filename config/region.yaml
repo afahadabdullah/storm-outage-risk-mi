@@ -63,6 +63,7 @@ sources:
   nlcd_tcc_image_service:  "https://imagery.geoplatform.gov/iipp/rest/services/Vegetation/USFS_EDW_NLCD_TCC_CONUS/ImageServer"
   era5_dataset:            "reanalysis-era5-single-levels"
   cds_url:                 "https://cds.climate.copernicus.eu/api"
+  era5_arco_geo_url:       "https://arco.datastores.ecmwf.int/cadl-arco-geo-002/arco/reanalysis_era5_single_levels/sfc/geoChunked.zarr"
   gefs_bucket:             "noaa-gefs-pds"
   gefs_product:            "pgrb2sp25"           # 0.25 deg primary fields, includes GUST
   # Permanent historical fallback for Phase 1 dates through 2019. The

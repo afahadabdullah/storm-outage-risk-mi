@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 """Download the complete Phase 2 inputs in restartable pieces.
 
-Outages are annual EAGLE-I CSVs. ERA5 is monthly because CDS expands year,
-month, and day selections as a cross-product and large multi-year requests are
-fragile. GEFS is fetched only for the frozen 2023 case studies and four lead
-times. Downloading test-year bytes is not model evaluation; ``phase2_train``
-still refuses to read the test rows without ``--evaluate-test``.
+Outages are annual EAGLE-I CSVs. Phase 2 ERA5 uses ECMWF's geo-chunked ARCO
+store for the variables it carries and CDS for the five residual variables;
+each monthly task slices the Michigan bbox before writing one merged NetCDF.
+GEFS is fetched only for the frozen 2023 case studies and four lead times.
+Downloading test-year bytes is not model evaluation; ``phase2_train`` still
+refuses to read the test rows without ``--evaluate-test``.
 """
 from __future__ import annotations
 
@@ -27,6 +28,35 @@ from src.common.logio import dir_size_mb, get_logger
 
 log = get_logger("phase2_download")
 NLCD_PIXEL_M = 30          # NLCD tree-canopy native resolution
+
+# CDS request names -> the names every downstream feature builder expects.
+ERA5_TO_SHORT = {
+    "10m_u_component_of_wind": "u10",
+    "10m_v_component_of_wind": "v10",
+    "instantaneous_10m_wind_gust": "i10fg",
+    "100m_u_component_of_wind": "u100",
+    "100m_v_component_of_wind": "v100",
+    "total_precipitation": "tp",
+    "2m_temperature": "t2m",
+    "volumetric_soil_water_layer_1": "swvl1",
+    "volumetric_soil_water_layer_2": "swvl2",
+    "convective_available_potential_energy": "cape",
+    "snowfall": "sf",
+    "snow_depth": "sd",
+}
+
+# The current ECMWF ERA5 ARCO surface cube carries these seven fields. Gust
+# has a descriptive ARCO name but is the same i10fg parameter used by CDS.
+ARCO_SOURCE_BY_CDS = {
+    "10m_u_component_of_wind": "10m_u_component_of_wind",
+    "10m_v_component_of_wind": "10m_v_component_of_wind",
+    "instantaneous_10m_wind_gust":
+        "10m_wind_gust_since_previous_post_processing",
+    "100m_u_component_of_wind": "100m_u_component_of_wind",
+    "100m_v_component_of_wind": "100m_v_component_of_wind",
+    "total_precipitation": "total_precipitation",
+    "2m_temperature": "2m_temperature",
+}
 
 
 def available_eaglei_years(cfg: Config) -> set[int]:
@@ -96,29 +126,116 @@ def era5_month_path(year: int, month: int) -> Path:
     return PATHS.raw / "era5_monthly" / f"era5_{year}{month:02d}.nc"
 
 
-def fetch_era5_month(cfg: Config, year: int, month: int,
-                     force: bool = False) -> Path:
-    out = era5_month_path(year, month)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_suffix(out.suffix + ".part")
-    if out.exists() and not force:
-        valid, reason = era5_file_status(out)
-        if valid:
-            log.info("cached ERA5 %s (%.1f MB)", out.name, dir_size_mb(out))
-            return out
-        log.warning("invalid monthly cache %s (%s); replacing", out, reason)
-    if tmp.exists():
-        raise SystemExit(
-            f"{tmp} exists. Confirm no other downloader owns it, then move the "
-            "stale partial file aside before retrying.")
+def era5_source_variables(variables: list[str]) -> tuple[list[str], list[str]]:
+    """Split requested fields between ECMWF ARCO and residual CDS access."""
+    unknown = sorted(set(variables) - set(ERA5_TO_SHORT))
+    if unknown:
+        raise ValueError(f"ERA5 variables have no output-name mapping: {unknown}")
+    arco = [name for name in variables if name in ARCO_SOURCE_BY_CDS]
+    cds = [name for name in variables if name not in ARCO_SOURCE_BY_CDS]
+    return arco, cds
 
+
+def _month_bounds(year: int, month: int) -> tuple[pd.Timestamp, pd.Timestamp, int]:
+    _, n_days = calendar.monthrange(year, month)
+    start = pd.Timestamp(year=year, month=month, day=1)
+    end = start + pd.Timedelta(days=n_days) - pd.Timedelta(hours=1)
+    return start, end, n_days
+
+
+def _select_arco_month(ds, cfg: Config, year: int, month: int,
+                       variables: list[str]):
+    """Select time, variables and bbox lazily, before any ARCO bytes are loaded."""
+    source_names = [ARCO_SOURCE_BY_CDS[name] for name in variables]
+    missing = sorted(set(source_names) - set(ds.data_vars))
+    if missing:
+        raise RuntimeError(f"ECMWF ARCO store is missing expected fields: {missing}")
+    for coord in ("time", "latitude", "longitude"):
+        if coord not in ds.coords:
+            raise RuntimeError(f"ECMWF ARCO store has no {coord!r} coordinate")
+
+    start, end, n_days = _month_bounds(year, month)
+    w, s, e, n = (float(value) for value in cfg["bbox"])
+    lat = ds["latitude"]
+    lat_descends = float(lat.isel(latitude=0)) > float(lat.isel(latitude=-1))
+    lat_slice = slice(n, s) if lat_descends else slice(s, n)
+
+    lon = ds["longitude"]
+    uses_360 = float(lon.max()) > 180.0
+    select_w, select_e = ((w % 360), (e % 360)) if uses_360 else (w, e)
+    subset = ds[source_names].sel(
+        time=slice(start, end),
+        latitude=lat_slice,
+        longitude=slice(select_w, select_e),
+    )
+    if uses_360:
+        subset = subset.assign_coords(
+            longitude=((subset.longitude + 180) % 360) - 180).sortby("longitude")
+
+    expected_hours = n_days * 24
+    if subset.sizes.get("time") != expected_hours:
+        raise RuntimeError(
+            f"ECMWF ARCO {year:04d}-{month:02d} returned "
+            f"{subset.sizes.get('time', 0)} hours; expected {expected_hours}")
+    if subset.sizes.get("latitude", 0) == 0 or subset.sizes.get("longitude", 0) == 0:
+        raise RuntimeError(f"ECMWF ARCO bbox selection is empty: {cfg['bbox']}")
+
+    rename = {ARCO_SOURCE_BY_CDS[name]: ERA5_TO_SHORT[name] for name in variables}
+    return subset.rename(rename)
+
+
+def _cds_api_token() -> str:
+    """Read the bearer token without ever logging it."""
+    import os
+
+    import yaml
+
+    token = os.environ.get("CDSAPI_KEY", "").strip()
+    if not token:
+        rc = Path.home() / ".cdsapirc"
+        if not rc.exists():
+            raise RuntimeError("~/.cdsapirc is missing; ARCO requires a CDS API token")
+        token = str((yaml.safe_load(rc.read_text()) or {}).get("key", "")).strip()
+    if not token:
+        raise RuntimeError("CDS API token is empty")
+    if ":" in token:
+        raise RuntimeError(
+            "ARCO requires the current bare CDS personal-access token, not UID:KEY")
+    return token
+
+
+def _write_arco_month(cfg: Config, year: int, month: int,
+                      variables: list[str], dest: Path) -> None:
+    import xarray as xr
+
+    url = cfg["sources"]["era5_arco_geo_url"]
+    log.info("ARCO ERA5 %04d-%02d: bbox first, %d variables", year, month,
+             len(variables))
+    ds = xr.open_zarr(
+        url,
+        consolidated=True,
+        storage_options={
+            "headers": {"Authorization": f"Bearer {_cds_api_token()}"}
+        },
+    )
+    try:
+        subset = _select_arco_month(ds, cfg, year, month, variables)
+        encoding = {name: {"zlib": True, "complevel": 1}
+                    for name in subset.data_vars}
+        subset.to_netcdf(dest, engine="netcdf4", encoding=encoding)
+    finally:
+        ds.close()
+
+
+def _download_cds_month(cfg: Config, year: int, month: int,
+                        variables: list[str], dest: Path) -> None:
     import cdsapi
 
-    _, n_days = calendar.monthrange(year, month)
+    _, _, n_days = _month_bounds(year, month)
     w, s, e, n = cfg["bbox"]
     request = {
         "product_type": ["reanalysis"],
-        "variable": list(cfg["era5_variables"]),
+        "variable": variables,
         "year": [f"{year:04d}"],
         "month": [f"{month:02d}"],
         "day": [f"{day:02d}" for day in range(1, n_days + 1)],
@@ -127,11 +244,113 @@ def fetch_era5_month(cfg: Config, year: int, month: int,
         "data_format": "netcdf",
         "download_format": "unarchived",
     }
-    log.info("CDS ERA5 %04d-%02d: %d days x %d variables", year, month,
-             n_days, len(request["variable"]))
+    log.info("CDS residual ERA5 %04d-%02d: %d days x %d variables",
+             year, month, n_days, len(variables))
     cdsapi.Client(url=cfg["sources"]["cds_url"]).retrieve(
-        cfg["sources"]["era5_dataset"], request, str(tmp))
-    kind = publish_era5_download(tmp, out)
+        cfg["sources"]["era5_dataset"], request, str(dest))
+
+
+def _load_era5_part(path: Path):
+    import xarray as xr
+
+    with xr.open_dataset(path) as opened:
+        ds = opened.load()
+    rename = {}
+    if "valid_time" in ds.dims and "time" not in ds.dims:
+        rename["valid_time"] = "time"
+    rename.update({name: short for name, short in ERA5_TO_SHORT.items()
+                   if name in ds.data_vars})
+    ds = ds.rename(rename)
+    for dim in ("expver", "number"):
+        if dim in ds.dims and ds.sizes[dim] == 1:
+            ds = ds.squeeze(dim, drop=True)
+    return ds
+
+
+def era5_month_status(path: Path, cfg: Config, year: int,
+                      month: int) -> tuple[bool, str]:
+    valid, reason = era5_file_status(path)
+    if not valid:
+        return valid, reason
+
+    import xarray as xr
+
+    expected = {ERA5_TO_SHORT[name] for name in cfg["era5_variables"]}
+    expected_hours = _month_bounds(year, month)[2] * 24
+    try:
+        with xr.open_dataset(path) as ds:
+            time_name = "time" if "time" in ds.dims else "valid_time"
+            missing = sorted(expected - set(ds.data_vars))
+            if missing:
+                return False, f"missing variables {missing}"
+            if ds.sizes.get(time_name) != expected_hours:
+                return False, (f"has {ds.sizes.get(time_name, 0)} hours; "
+                               f"expected {expected_hours}")
+    except Exception as err:
+        return False, f"{type(err).__name__}: {err}"
+    return True, "ok"
+
+
+def fetch_era5_month(cfg: Config, year: int, month: int,
+                     force: bool = False) -> Path:
+    out = era5_month_path(year, month)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(out.suffix + ".part")
+    if out.exists() and not force:
+        valid, reason = era5_month_status(out, cfg, year, month)
+        if valid:
+            log.info("cached ERA5 %s (%.1f MB)", out.name, dir_size_mb(out))
+            return out
+        log.warning("invalid monthly cache %s (%s); replacing", out, reason)
+    arco_tmp = out.with_name(out.name + ".arco.part.nc")
+    cds_download = out.with_name(out.name + ".cds.download.part")
+    cds_tmp = out.with_name(out.name + ".cds.part.nc")
+    partials = [tmp, arco_tmp, cds_download, cds_tmp]
+    stale = [path for path in partials if path.exists()]
+    if stale:
+        raise SystemExit(
+            f"Partial ERA5 files exist: {[str(path) for path in stale]}. Confirm "
+            "no downloader owns them, then move them aside before retrying.")
+
+    backend = str(cfg.get("era5_backend", "cds")).lower()
+    variables = list(cfg["era5_variables"])
+    if backend == "cds":
+        _download_cds_month(cfg, year, month, variables, tmp)
+        kind = publish_era5_download(tmp, out)
+    elif backend == "arco":
+        import xarray as xr
+
+        arco_variables, cds_variables = era5_source_variables(variables)
+        _write_arco_month(cfg, year, month, arco_variables, arco_tmp)
+        parts = [_load_era5_part(arco_tmp)]
+        if cds_variables:
+            _download_cds_month(cfg, year, month, cds_variables, cds_download)
+            publish_era5_download(cds_download, cds_tmp)
+            parts.append(_load_era5_part(cds_tmp))
+        try:
+            merged = xr.merge(parts, compat="override", join="exact")
+            encoding = {name: {"zlib": True, "complevel": 1}
+                        for name in merged.data_vars}
+            merged.to_netcdf(tmp, engine="netcdf4", encoding=encoding)
+            merged.close()
+        finally:
+            for part in parts:
+                part.close()
+        valid, reason = era5_month_status(tmp, cfg, year, month)
+        if not valid:
+            raise RuntimeError(f"hybrid ARCO/CDS ERA5 file is invalid ({reason})")
+        tmp.replace(out)
+        for part_path in (arco_tmp, cds_tmp, cds_download):
+            if part_path.exists():
+                part_path.unlink()
+        kind = (f"ARCO {len(arco_variables)} variables + "
+                f"CDS {len(cds_variables)} variables")
+    else:
+        raise ValueError(f"era5_backend must be 'arco' or 'cds', got {backend!r}")
+
+    valid, reason = era5_month_status(out, cfg, year, month)
+    if not valid:
+        raise RuntimeError(f"published ERA5 month is invalid ({reason})")
     log.info("published %s (%s, %.1f MB)", out.name, kind, dir_size_mb(out))
     return out
 
@@ -254,9 +473,13 @@ def main() -> None:
     ap.add_argument("--months", default="1,2,3,4,5,6,7,8,9,10,11,12")
     ap.add_argument("--case", action="append",
                     help="case-study slug; repeat to select, default all")
+    ap.add_argument("--era5-backend", choices=["arco", "cds"],
+                    help="override phase2.yaml for ERA5 downloads")
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
     cfg = load_phase2(args.config, args.phase2)
+    if args.era5_backend:
+        cfg["era5_backend"] = args.era5_backend
     years = parse_int_list(args.years) if args.years else study_years(cfg)
     months = parse_int_list(args.months)
     allowed = set(study_years(cfg))

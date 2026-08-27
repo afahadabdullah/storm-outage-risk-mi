@@ -104,7 +104,7 @@ phase2-download: ## all full-study inputs (large; prefer phase2-submit on Slurm)
 phase2-download-outages: ## EAGLE-I 2017 baseline buffer + 2018-2023 study years
 	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only outages
 
-phase2-download-era5: ## ERA5 monthly 2018-2023 (72 restartable requests)
+phase2-download-era5: ## monthly ERA5: Michigan-sliced ARCO + 5 residual CDS fields
 	$(PY) src/phase2_download.py --config $(CFG) --phase2 $(P2) --only era5
 
 phase2-download-gefs: ## 2023 cases, day-5/-3/-2/-1, 31 members

@@ -40,6 +40,9 @@ dependencies:
   - netcdf4>=1.6
   - h5netcdf>=1.3
   - dask>=2024.6
+  - zarr>=2.18,<3          # xarray 2024.6 uses the Zarr v2 API
+  - fsspec>=2024.6         # authenticated HTTPS access to ECMWF ARCO
+  - aiohttp>=3.9
   - cfgrib>=0.9.12          # GEFS GRIB2
   - eccodes>=2.35
   # --- models -----------------------------------------------------------

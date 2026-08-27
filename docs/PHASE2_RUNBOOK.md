@@ -120,8 +120,19 @@ Every downloader is cache-aware. A failed monthly task can be restarted:
   src/phase2_download.py --only era5 --years 2020 --months 7
 ```
 
-ERA5 is the long pole: 72 CDS requests, 2 concurrent, each queuing
-independently. Expect days, not hours.
+Each monthly task reads seven fields from ECMWF's geo-chunked ARCO Zarr store,
+selects the Michigan time/bbox slice before loading or saving data, requests
+only the five unavailable fields (CAPE, soil water layers 1/2, snowfall and
+snow depth) from CDS, and atomically publishes one 12-field NetCDF. The ERA5
+array has 72 restartable tasks capped at two concurrent tasks. ARCO avoids CDS
+queueing for most bytes; the residual five-field CDS requests can still queue.
+
+ARCO requires `zarr`, `fsspec`, and `aiohttp`. For an existing pip environment:
+
+```bash
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python -m pip \
+  install 'zarr==2.18.7' 'fsspec==2024.6.1' 'aiohttp==3.10.11'
+```
 
 ## Validation review
 

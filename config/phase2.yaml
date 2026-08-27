@@ -1,6 +1,10 @@
 # Full-study settings.  Region choices and frozen temporal splits remain in
 # region.yaml; this file contains only execution controls.
 phase: 2
+# ECMWF geo-chunked ARCO supplies 7/12 fields through a chunk-selective Michigan
+# slice; the downloader merges the 5 residual CDS fields into the same monthly
+# NetCDF contract consumed by the feature builder. Set to "cds" for fallback.
+era5_backend: arco
 baseline_method: rolling
 n_boost_rounds: 500
 n_mc_draws: 1000
@@ -22,4 +26,3 @@ storm_min_county_frac: 0.10
 calibration_cv_folds: 5
 # Reference models the spec requires as skill floors (sections 6.1, 6.2).
 fit_reference_models: true
-

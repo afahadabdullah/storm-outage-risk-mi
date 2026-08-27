@@ -44,7 +44,10 @@ PHASE2_REQUIRED = {
     "properscoring": "CRPS. Imported inside evaluate(), AFTER the model is dumped.",
     "ngboost": "phase2.yaml sets magnitude_model: ngboost. A missing import "
                "silently falls back to LightGBM quantiles.",
-    "cdsapi": "72 monthly ERA5 requests.",
+    "cdsapi": "five residual monthly ERA5 variables not present in ARCO.",
+    "zarr": "ECMWF ARCO ERA5 access.",
+    "fsspec": "authenticated HTTPS access to ECMWF ARCO.",
+    "aiohttp": "HTTP transport for ECMWF ARCO.",
     "boto3": "GEFS case-study download.",
     "cfgrib": "reading the GEFS GRIB2 subset in phase2_forecast.",
     "statsmodels": "logistic and negative-binomial GLM reference models (spec 6.1, 6.2).",
@@ -52,6 +55,7 @@ PHASE2_REQUIRED = {
 HOSTS = {
     "api.figshare.com": "EAGLE-I outage data",
     "cds.climate.copernicus.eu": "ERA5 (Copernicus CDS)",
+    "arco.datastores.ecmwf.int": "ERA5 geo-chunked ARCO",
     "noaa-gefs-pds.s3.amazonaws.com": "GEFS forecast ensemble",
     "www2.census.gov": "TIGER county boundaries",
     "www.mrlc.gov": "NLCD tree canopy (optional)",
@@ -190,6 +194,11 @@ def main(phase: int = 1) -> int:
                  f"phase2.yaml phase = {over.get('phase')}",
                  "" if int(over.get("phase", 0)) == 2 else "must be 2")
             failures += 0 if int(over.get("phase", 0)) == 2 else 1
+            backend = str(over.get("era5_backend", "cds")).lower()
+            line(OK if backend in {"arco", "cds"} else BAD,
+                 f"era5_backend = {backend!r}",
+                 "" if backend in {"arco", "cds"} else "must be 'arco' or 'cds'")
+            failures += 0 if backend in {"arco", "cds"} else 1
 
         splits = ("train_start", "train_end", "val_start", "val_end",
                   "test_start", "test_end")
