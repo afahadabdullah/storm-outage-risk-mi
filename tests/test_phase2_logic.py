@@ -10,6 +10,7 @@ from sklearn.model_selection import GroupKFold
 from src import phase2_build
 from src.common.config import Config
 from src.phase2_backtest import county_skill, skill_matrix
+from src.phase2_forecast import ensure_finite_forecast_features, forecast_feature_fills
 from src.phase2_train import (
     _interp_log_quantiles,
     crps_from_quantiles,
@@ -160,3 +161,18 @@ def test_backtest_ends_before_the_first_missing_weather_month(tmp_path, monkeypa
         (monthly / f"era5_2021{month:02d}.nc").touch()
     monkeypatch.setattr(phase2_build, "PATHS", SimpleNamespace(raw=tmp_path))
     assert phase2_build.available_backtest_end(Config({}), 2021) == pd.Timestamp("2021-02-28")
+
+
+def test_forecast_feature_guard_uses_frozen_training_medians_only():
+    merged = pd.DataFrame({
+        "date": pd.to_datetime(["2018-01-01", "2018-01-02", "2020-01-01"]),
+        "feature_a": [2.0, 6.0, 100.0],
+        "feature_b": [1.0, 5.0, 99.0],
+    })
+    bundle = {"features": ["feature_a", "feature_b"]}
+    cfg = Config({"train_start": "2018-01-01", "train_end": "2018-12-31"})
+    fills = forecast_feature_fills(merged, bundle, cfg)
+    rows = pd.DataFrame({"feature_a": [np.nan], "feature_b": [np.inf]})
+    repaired = ensure_finite_forecast_features(rows, bundle, fills, "test")
+    assert repaired.feature_a.item() == 4.0
+    assert repaired.feature_b.item() == 3.0

@@ -272,6 +272,50 @@ def member_realizations(bundle: dict, rows: pd.DataFrame, n_draws: int,
     return (occ * mag).sum(axis=0), proba   # statewide total per draw, county p
 
 
+def forecast_feature_fills(merged: pd.DataFrame, bundle: dict,
+                           cfg: Config) -> pd.Series:
+    """Frozen-training medians for the rare missing forecast covariates.
+
+    LightGBM can route missing values, but the NGBoost magnitude head rejects
+    them outright.  Forecast templates contain slowly varying analysis fields,
+    and a missing value in one such field should not discard a complete GEFS
+    case.  Calculate replacement values from the original training window only:
+    using validation, a backtest, or 2023 analysis values here would leak
+    information into the forecast application.
+    """
+    features = bundle["features"]
+    dates = pd.to_datetime(merged.date)
+    train = merged.loc[dates.between(cfg["train_start"], cfg["train_end"]), features]
+    values = train.replace([np.inf, -np.inf], np.nan).apply(pd.to_numeric,
+                                                             errors="coerce")
+    fills = values.median(axis=0).fillna(0.0)
+    return fills.reindex(features).astype(float)
+
+
+def ensure_finite_forecast_features(rows: pd.DataFrame, bundle: dict,
+                                    fills: pd.Series, context: str) -> pd.DataFrame:
+    """Use frozen-training medians and fail loudly if a model input stays bad."""
+    features = bundle["features"]
+    missing_columns = sorted(set(features) - set(rows.columns))
+    if missing_columns:
+        raise ValueError(f"{context}: forecast rows lack model feature(s) {missing_columns}")
+    out = rows.copy()
+    values = (out[features].replace([np.inf, -np.inf], np.nan)
+              .apply(pd.to_numeric, errors="coerce"))
+    missing = values.isna()
+    if missing.any().any():
+        detail = {col: int(missing[col].sum()) for col in features if missing[col].any()}
+        log.warning("%s: imputing missing forecast model inputs from frozen training "
+                    "medians: %s", context, detail)
+        values = values.fillna(fills)
+    remaining = values.isna()
+    if remaining.any().any():
+        detail = {col: int(remaining[col].sum()) for col in features if remaining[col].any()}
+        raise ValueError(f"{context}: non-finite model inputs remain after imputation: {detail}")
+    out.loc[:, features] = values
+    return out
+
+
 def forecast_rows(template: pd.DataFrame, geoids: list[str], gust: np.ndarray,
                   gust_mean: np.ndarray, precip: np.ndarray) -> pd.DataFrame:
     """Overwrite the forecastable weather features; keep the static ones.
@@ -378,6 +422,7 @@ def main() -> None:
         raise SystemExit("frozen Phase 2 model missing -- run `make phase2-train` first")
     bundle = joblib.load(model_path)
     merged = pd.read_parquet(PATHS.processed / "phase2_merged.parquet")
+    feature_fills = forecast_feature_fills(merged, bundle, cfg)
 
     clim = build_era5_climatology(cfg, force=args.force_climatology)
     W, M, geoids, _ = build_weight_matrix(cfg, clim["lats"], clim["lons"])
@@ -403,6 +448,8 @@ def main() -> None:
             pool = merged
         template_date = pool.date.iloc[len(pool) // 2]
         template = pool[pool.date == template_date].copy()
+        template = ensure_finite_forecast_features(
+            template, bundle, feature_fills, f"{case['name']} template")
 
         per_lead: dict[int, np.ndarray] = {}
         with timed(f"phase2_forecast_{case['name'].replace(' ', '_')}", log):
@@ -459,6 +506,9 @@ def main() -> None:
                     county_precip = agg_mean(W, p4[m]).sum(axis=0) * 1000.0
                     rows = forecast_rows(template, geoids, county_gust,
                                          county_gmean, county_precip)
+                    rows = ensure_finite_forecast_features(
+                        rows, bundle, feature_fills,
+                        f"{case['name']} day-{lead} member-{m}")
                     draws, probs = member_realizations(bundle, rows, n_draws, rng)
                     reals.append(draws)
                     member_probs.append(probs)
