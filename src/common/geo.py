@@ -16,11 +16,11 @@ in a north-south state like Michigan, small enough to look plausible.
 from __future__ import annotations
 
 import io
+import os
 import zipfile
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import requests
 from scipy import sparse
 
@@ -59,7 +59,15 @@ def fetch_counties(cfg: Config, force: bool = False) -> Path:
     gdf = gdf[gdf.STATEFP.isin(state_prefixes(cfg))].copy()
     gdf["GEOID"] = gdf.GEOID.astype(str).str.zfill(5)
     gdf = gdf[["GEOID", "NAME", "ALAND", "AWATER", "geometry"]]
-    gdf.to_parquet(out)
+    # Atomic publish. The Phase 2 Slurm chain launches the outage and canopy
+    # download jobs concurrently and BOTH call fetch_counties; a plain
+    # to_parquet lets both pass the exists() check and then write the same path
+    # at once, and the canopy job immediately reads it back to build its zonal
+    # statistics requests. Same temp-then-replace pattern as
+    # era5_io.publish_era5_download.
+    tmp = out.with_suffix(out.suffix + f".part{os.getpid()}")
+    gdf.to_parquet(tmp)
+    tmp.replace(out)
     log.info("counties: %d written to %s", len(gdf), out.name)
     return out
 

@@ -63,9 +63,17 @@ def check_units(ds, cfg, gb) -> None:
              criterion=4)
 
     gmax = float(gust.max())
-    gb.require("gust_max_stormlike", gmax > 15,
-               f"domain max gust {gmax:.1f} m/s -- too low for a storm window; "
-               "wrong variable, wrong units, or the window missed the storm")
+    if cfg.is_phase1:
+        # Phase 1 deliberately selects the year's strongest storm window, so a
+        # low domain max means the window missed it. Phase 2 aggregates all 72
+        # months including genuinely calm ones, where this would fire falsely --
+        # there it is recorded as evidence, not asserted.
+        gb.require("gust_max_stormlike", gmax > 15,
+                   f"domain max gust {gmax:.1f} m/s -- too low for a storm window; "
+                   "wrong variable, wrong units, or the window missed the storm")
+    else:
+        gb.check("gust_max_plausible", 0 <= gmax < 80,
+                 f"domain max gust {gmax:.1f} m/s", criterion=4)
     nan_vars = [v for v in ds.data_vars if bool(ds[v].isnull().any())]
     gb.check("no_nans_in_era5", not nan_vars, f"variables with NaN: {nan_vars or 'none'}")
 
@@ -188,11 +196,36 @@ def _customer_counts() -> pd.Series:
 
 
 def load_canopy_pct(cfg, fips_list) -> pd.Series:
-    """County-mean NLCD tree canopy. Optional in Phase 1 -- no gate depends on it."""
+    """County-mean NLCD tree canopy. Optional in Phase 1 -- no gate depends on it.
+
+    Two sources, checked in the order Phase 2 actually produces them:
+
+      canopy_county.csv    county means straight from the official 30 m
+                           ImageServer (`make phase2-download-canopy`)
+      canopy_pct_clip.tif  the legacy clipped CONUS raster (Phase 1 path)
+
+    The CSV branch matters beyond tidiness: without it Phase 2 computed
+    gust_x_canopy and ice_x_canopy as all-NaN here, then silently recomputed
+    them downstream, while warning on every run that canopy was missing when it
+    was present.
+    """
+    csv = PATHS.raw / "canopy_county.csv"
+    if csv.exists():
+        table = pd.read_csv(csv, dtype={"fips": str})
+        series = table.set_index(table.fips.str.strip().str.zfill(5)).canopy_pct
+        series = pd.to_numeric(series, errors="coerce")
+        out = series.reindex(list(fips_list)).astype(float)
+        if out.isna().any():
+            log.warning("canopy_county.csv has no row for %d county(ies): %s",
+                        int(out.isna().sum()), sorted(out[out.isna()].index))
+        log.info("canopy from %s (%d counties)", csv.name, int(out.notna().sum()))
+        return out
+
     tif = PATHS.raw / "canopy_pct_clip.tif"
     if not tif.exists():
-        log.warning("no canopy raster; canopy features fall back to NaN. "
-                    "Not a Phase 1 gate, but fetch it before Phase 2.")
+        log.warning("no canopy source (neither %s nor %s); canopy features fall "
+                    "back to NaN. Not a Phase 1 gate; Phase 2 requires it -- "
+                    "run `make phase2-download-canopy`.", csv.name, tif.name)
         return pd.Series(np.nan, index=list(fips_list), dtype=float)
     import rasterio
     from rasterio.mask import mask

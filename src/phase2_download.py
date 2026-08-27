@@ -26,6 +26,22 @@ from src.common.geo import fetch_counties, load_counties
 from src.common.logio import dir_size_mb, get_logger
 
 log = get_logger("phase2_download")
+NLCD_PIXEL_M = 30          # NLCD tree-canopy native resolution
+
+
+def available_eaglei_years(cfg: Config) -> set[int]:
+    """Years the figshare article actually carries, from the live listing.
+
+    The config's `eaglei_years_available` is a claim; this is the fact. Checking
+    it once, before the first byte, turns "the download died on file eight of
+    nine" into a message naming exactly which years exist.
+    """
+    import re
+
+    mod = runpy.run_path(str(ROOT / "src" / "01_fetch_outage.py"))
+    names = mod["figshare_files"](cfg["sources"]["eaglei_figshare_article"])
+    return {int(m.group(1)) for name in names
+            if (m := re.search(r"eaglei_outages_(\d{4})", name))}
 
 
 def load_phase2(region: str, phase2: str) -> Config:
@@ -45,6 +61,30 @@ def fetch_outages(cfg: Config, years: list[int], force: bool = False) -> None:
     fetch_eaglei = mod["fetch_eaglei"]
     if force:
         log.warning("--force does not delete annual CSVs; validated cached files are reused")
+
+    # Preflight the whole requested span against the live listing, so a study
+    # period the archive does not cover fails here rather than partway through.
+    wanted = sorted(set(years))
+    missing_locally = [y for y in wanted
+                       if not (PATHS.raw / f"eaglei_outages_{y}.csv").exists()]
+    if missing_locally:
+        try:
+            have = available_eaglei_years(cfg)
+        except Exception as err:                              # noqa: BLE001
+            log.warning("could not list the figshare article (%s); proceeding "
+                        "year by year", err)
+        else:
+            gaps = sorted(set(missing_locally) - have)
+            if gaps:
+                raise SystemExit(
+                    f"EAGLE-I years {gaps} are not in figshare article "
+                    f"{cfg['sources']['eaglei_figshare_article']}. The article "
+                    f"carries {min(have)}-{max(have)}. Either the frozen splits "
+                    "in region.yaml reach past the archive, or the article "
+                    "moved -- fix region.yaml, do not work around this.")
+            log.info("figshare carries EAGLE-I %d-%d; study period %d-%d is covered",
+                     min(have), max(have), wanted[0], wanted[-1])
+
     fetch_counties(cfg, force=force)
     for year in years:
         outages, _ = fetch_eaglei(cfg, year)
@@ -154,24 +194,50 @@ def fetch_canopy_required(cfg: Config, force: bool = False) -> None:
                           for interior in polygon.interiors])
         geometry = {"rings": rings,
                     "spatialReference": {"wkid": int(cfg["crs_analysis"].split(":")[-1])}}
+        wkid = int(cfg["crs_analysis"].split(":")[-1])
         payload = {
             "f": "json", "geometryType": "esriGeometryPolygon",
             "geometry": json.dumps(geometry),
             "mosaicRule": json.dumps({"where": "beginyear = 2021"}),
             "renderingRule": json.dumps({"rasterFunction": "NLCDTCC_noBkgrd"}),
+            # Pin the analysis resolution to NLCD's native 30 m. Without this
+            # the service picks a pyramid level of its own choosing, so the
+            # "native-pixel calculations" claim above was unverified -- and a
+            # coarsened mean is still a plausible percentage, so the 0-100
+            # bounds check below would never catch it.
+            "pixelSize": json.dumps(
+                {"x": NLCD_PIXEL_M, "y": NLCD_PIXEL_M,
+                 "spatialReference": {"wkid": wkid}}),
         }
         response = requests.post(endpoint, data=payload, timeout=300)
         response.raise_for_status()
         result = response.json()
         if "error" in result or not result.get("statistics"):
             raise RuntimeError(f"canopy service failed for {fips}: {result}")
-        mean = float(result["statistics"][0]["mean"])
+        stats = result["statistics"][0]
+        mean = float(stats["mean"])
         if not 0 <= mean <= 100:
             raise ValueError(f"invalid canopy mean for {fips}: {mean}")
-        rows.append({"fips": str(fips), "canopy_pct": mean})
-        log.info("canopy %s: %.1f%%", fips, mean)
-    pd.DataFrame(rows).to_csv(out, index=False)
-    log.info("official 2021 NLCD canopy county means -> %s", out)
+        # Resolution sanity: the pixel count the service reports should be
+        # within a factor of ~2 of land area / 900 m^2. Anything far below that
+        # means the statistics came from an overview, not native pixels.
+        counted = float(stats.get("count") or 0)
+        expected = float(row.get("ALAND", 0) or 0) / (NLCD_PIXEL_M ** 2)
+        ratio = counted / expected if expected > 0 else float("nan")
+        if expected > 0 and counted > 0 and not 0.5 <= ratio <= 2.0:
+            log.warning("canopy %s: %.0f pixels vs ~%.0f expected at %dm "
+                        "(ratio %.2f) -- the service may have used an overview "
+                        "level rather than native resolution", fips, counted,
+                        expected, NLCD_PIXEL_M, ratio)
+        rows.append({"fips": str(fips), "canopy_pct": mean,
+                     "pixel_count": counted, "pixel_count_expected_30m": round(expected)})
+        log.info("canopy %s: %.1f%% (%.0f px)", fips, mean, counted)
+    frame = pd.DataFrame(rows)
+    tmp = out.with_suffix(out.suffix + ".part")
+    frame.to_csv(tmp, index=False)
+    tmp.replace(out)
+    log.info("official 2021 NLCD canopy county means at %dm -> %s (%d counties)",
+             NLCD_PIXEL_M, out, len(frame))
 
 
 def parse_int_list(value: str) -> list[int]:

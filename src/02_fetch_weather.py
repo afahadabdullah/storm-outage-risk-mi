@@ -28,12 +28,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import numpy as np
 import pandas as pd
 
 from src.common.config import PATHS, base_parser, config_from_args
-from src.common.era5_io import (era5_file_status, era5_path, open_era5,
-                                publish_era5_download)  # noqa: F401
+from src.common.era5_io import (era5_file_status, era5_path, publish_era5_download)  # noqa: F401
 from src.common.logio import dir_size_mb, get_logger, record, timed
 
 log = get_logger("02_weather")
@@ -298,7 +296,8 @@ def fetch_canopy(cfg, force: bool = False) -> Path | None:
     try:
         import rioxarray  # noqa: F401
         import requests
-        import zipfile, io, rasterio
+        import zipfile
+        import rasterio
         from rasterio.mask import mask
         from shapely.geometry import box
 

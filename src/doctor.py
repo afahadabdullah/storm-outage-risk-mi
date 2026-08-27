@@ -1,14 +1,19 @@
 #!/usr/bin/env python
-"""Preflight for a fresh machine: `make doctor`.
+"""Preflight for a fresh machine: `make doctor` (Phase 1) / `make doctor-phase2`.
 
 Checks the things that silently cost you an afternoon on a remote box --
 a missing GDAL stack, an unwritten ~/.cdsapirc, a disk too small for the NLCD
 tile, an egress rule that blocks the CDS but not PyPI. Exits non-zero if
 anything REQUIRED is missing; warnings do not fail.
+
+`--phase 2` promotes the packages Phase 2 actually imports from optional to
+required. That distinction is not cosmetic: `properscoring` is imported lazily
+inside `crps_from_quantiles`, which runs AFTER the model bundle is dumped, so a
+node missing it burns the whole training job and leaves a model with no metrics.
 """
 from __future__ import annotations
 
-import os
+import argparse
 import shutil
 import socket
 import sys
@@ -29,7 +34,20 @@ OPTIONAL = {
     "rasterio": "NLCD canopy clip (step 2). Optional -- no Phase 1 gate uses canopy.",
     "rioxarray": "NLCD canopy clip. Optional.",
     "ngboost": "magnitude model in Phase 2. Not used by phase1.yaml.",
+    "properscoring": "CRPS in Phase 2 validation. Not used by phase1.yaml.",
     "pytest": "the assertion suite (`make test`).",
+}
+# Phase 2 imports these for real. `properscoring` and `ngboost` are imported
+# lazily, deep inside the training run, so a missing one does not surface until
+# hours of compute have already been spent.
+PHASE2_REQUIRED = {
+    "properscoring": "CRPS. Imported inside evaluate(), AFTER the model is dumped.",
+    "ngboost": "phase2.yaml sets magnitude_model: ngboost. A missing import "
+               "silently falls back to LightGBM quantiles.",
+    "cdsapi": "72 monthly ERA5 requests.",
+    "boto3": "GEFS case-study download.",
+    "cfgrib": "reading the GEFS GRIB2 subset in phase2_forecast.",
+    "statsmodels": "logistic and negative-binomial GLM reference models (spec 6.1, 6.2).",
 }
 HOSTS = {
     "api.figshare.com": "EAGLE-I outage data",
@@ -47,9 +65,9 @@ def line(status: str, what: str, detail: str = "") -> None:
     print(f"[{status}] {what}" + (f"   {detail}" if detail else ""))
 
 
-def main() -> int:
+def main(phase: int = 1) -> int:
     failures = 0
-    print(f"\nstorm-outage-risk preflight -- {ROOT}\n" + "-" * 68)
+    print(f"\nstorm-outage-risk preflight (phase {phase}) -- {ROOT}\n" + "-" * 68)
 
     v = sys.version_info
     good = (3, 10) <= (v.major, v.minor) <= (3, 12)
@@ -80,13 +98,25 @@ def main() -> int:
              "export PYTHONNOUSERSITE=1  (the Makefile sets this; a bare "
              "`python src/...` outside make does not)")
 
+    if phase == 2:
+        print("\nrequired for phase 2")
+        for m, why in PHASE2_REQUIRED.items():
+            if iu.find_spec(m) is None:
+                failures += 1
+                line(BAD, m, why)
+            else:
+                line(OK, m)
+
     print("\noptional packages")
     for m, why in OPTIONAL.items():
+        if phase == 2 and m in PHASE2_REQUIRED:
+            continue
         line(OK if iu.find_spec(m) else WARN, m, "" if iu.find_spec(m) else why)
 
     print("\nknown incompatibilities")
     try:
-        import scipy, lifelines
+        import scipy
+        import lifelines
         sv = tuple(int(x) for x in scipy.__version__.split(".")[:2])
         lv = tuple(int(x) for x in lifelines.__version__.split(".")[:2])
         bad = sv >= (1, 14) and lv < (0, 29)
@@ -139,19 +169,80 @@ def main() -> int:
 
     print("\nconfig")
     import yaml
-    p1 = yaml.safe_load((ROOT / "config" / "phase1.yaml").read_text())
-    ws = str(p1.get("window_start"))
-    line(WARN if ws == "AUTO" else OK, f"window_start = {ws}",
-         "run `make fetch` then `python src/select_window.py --write`"
-         if ws == "AUTO" else "")
+    region = yaml.safe_load((ROOT / "config" / "region.yaml").read_text())
+    if phase == 1:
+        p1 = yaml.safe_load((ROOT / "config" / "phase1.yaml").read_text())
+        ws = str(p1.get("window_start"))
+        line(WARN if ws == "AUTO" else OK, f"window_start = {ws}",
+             "run `make fetch` then `python src/select_window.py --write`"
+             if ws == "AUTO" else "")
+    else:
+        # Phase 2 runs region.yaml + phase2.yaml and never reads phase1.yaml.
+        # What matters here is that the frozen splits are intact and that the
+        # study period is actually available from the upstream archive.
+        p2 = ROOT / "config" / "phase2.yaml"
+        if not p2.exists():
+            failures += 1
+            line(BAD, "config/phase2.yaml", "missing")
+        else:
+            over = yaml.safe_load(p2.read_text()) or {}
+            line(OK if int(over.get("phase", 0)) == 2 else BAD,
+                 f"phase2.yaml phase = {over.get('phase')}",
+                 "" if int(over.get("phase", 0)) == 2 else "must be 2")
+            failures += 0 if int(over.get("phase", 0)) == 2 else 1
+
+        splits = ("train_start", "train_end", "val_start", "val_end",
+                  "test_start", "test_end")
+        unset = [k for k in splits if str(region.get(k, "AUTO")) in ("AUTO", "None", "")]
+        if unset:
+            failures += 1
+            line(BAD, "frozen splits", f"unset in region.yaml: {unset}")
+        else:
+            line(OK, "frozen splits",
+                 f"train {region['train_start']}..{region['train_end']} / "
+                 f"val {region['val_start']}..{region['val_end']} / "
+                 f"test {region['test_start']}..{region['test_end']}")
+
+        line(OK if region.get("baseline_method") == "rolling" else BAD,
+             f"baseline_method = {region.get('baseline_method')!r}",
+             "" if region.get("baseline_method") == "rolling"
+             else "region.yaml must say 'rolling'; window_percentile is the "
+                  "Phase 1 approximation (spec 9.2)")
+        failures += 0 if region.get("baseline_method") == "rolling" else 1
+
+        # O6: the study period is derived from the frozen splits, so the
+        # declared archive coverage has to contain it or the download fails
+        # partway through instead of here.
+        need = list(range(int(str(region["train_start"])[:4]) - 1,
+                          int(str(region["test_end"])[:4]) + 1))
+        have = [int(y) for y in region.get("sources", {}).get(
+            "eaglei_years_available", [])]
+        missing = sorted(set(need) - set(have)) if have else []
+        if not have:
+            line(WARN, "eaglei_years_available", "unset -- cannot validate the study period")
+        elif missing:
+            failures += 1
+            line(BAD, "eaglei_years_available",
+                 f"study period needs {need[0]}-{need[-1]}; archive declares "
+                 f"{have[0]}-{have[-1]}, missing {missing}. Update region.yaml "
+                 "from the figshare article (doi 10.6084/m9.figshare.24237376) "
+                 "or move the frozen test year.")
+        else:
+            line(OK, "eaglei_years_available", f"covers {need[0]}-{need[-1]}")
 
     print("-" * 68)
     if failures:
-        print(f"{failures} required check(s) failed. Fix those before `make fetch`.\n")
+        print(f"{failures} required check(s) failed. Fix those before "
+              f"{'`make fetch`' if phase == 1 else '`make phase2-submit`'}.\n")
         return 1
-    print("preflight clean. Next: make phase1-synthetic, then make fetch.\n")
+    if phase == 1:
+        print("preflight clean. Next: make phase1-synthetic, then make fetch.\n")
+    else:
+        print("preflight clean. Next: make test, make lint, then make phase2-submit.\n")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    ap = argparse.ArgumentParser(description="storm-outage-risk preflight")
+    ap.add_argument("--phase", type=int, choices=(1, 2), default=1)
+    sys.exit(main(ap.parse_args().phase))

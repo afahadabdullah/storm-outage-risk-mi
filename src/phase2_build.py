@@ -14,24 +14,32 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import numpy as np
 import pandas as pd
 
 from src.common.config import PATHS, Config, ROOT, load_config
-from src.common.gates import book
+from src.common.gates import book, set_phase
 from src.common.io_outage import normalize_outage_frame
 from src.common.logio import get_logger, timed
 
 log = get_logger("phase2_build")
 
 
-def output_paths() -> dict[str, Path]:
+def output_paths(through: str = "validation") -> dict[str, Path]:
+    """Artifact paths, namespaced by scope.
+
+    The test build writes its own files rather than overwriting the
+    validation-scope table. Overwriting it meant that once the final-test job
+    ran, `phase2_train` fit mode refused to start (it correctly rejects a frame
+    containing 2023) and the only way back was to repeat a 72-file ERA5
+    aggregation to rebuild a table you already had.
+    """
+    suffix = "" if through == "validation" else "_test"
     return {
-        "hourly": PATHS.processed / "phase2_county_hourly.parquet",
-        "events": PATHS.processed / "phase2_events.parquet",
-        "weather": PATHS.processed / "phase2_county_day.parquet",
-        "merged": PATHS.processed / "phase2_merged.parquet",
-        "coverage": PATHS.processed / "phase2_coverage_exclusions.json",
+        "hourly": PATHS.processed / f"phase2_county_hourly{suffix}.parquet",
+        "events": PATHS.processed / f"phase2_events{suffix}.parquet",
+        "weather": PATHS.processed / f"phase2_county_day{suffix}.parquet",
+        "merged": PATHS.processed / f"phase2_merged{suffix}.parquet",
+        "coverage": PATHS.processed / f"phase2_coverage_exclusions{suffix}.json",
     }
 
 
@@ -74,7 +82,7 @@ def read_outage_year(cfg: Config, year: int) -> pd.DataFrame:
             .groupby(["fips", "time"], as_index=False).customers_out.max())
 
 
-def build_hourly(cfg: Config, end: pd.Timestamp) -> tuple[pd.DataFrame, list[str]]:
+def build_hourly(cfg: Config, end: pd.Timestamp) -> tuple[pd.DataFrame, dict]:
     model_start = pd.Timestamp(cfg["train_start"], tz="UTC")
     baseline_days = int(cfg.get("baseline_window_days", 30))
     start = model_start - pd.Timedelta(days=baseline_days)
@@ -84,15 +92,47 @@ def build_hourly(cfg: Config, end: pd.Timestamp) -> tuple[pd.DataFrame, list[str
               if year <= pd.Timestamp(end).year}
     # The prior-year slice is baseline context only. Coverage stability is
     # assessed from the frozen study period, which intentionally starts in 2018.
-    annual_sets = {year: set(frame.fips.astype(str)) for year, frame in annual.items()
-                   if year >= model_start.year}
-    seen = set().union(*annual_sets.values()) if annual_sets else set()
-    stable = set.intersection(*annual_sets.values()) if annual_sets else set()
+    annual_sets = {year: set(frame.fips.astype(str))
+                   for year, frame in annual.items() if year >= model_start.year}
+
+    # The reporting cohort is fixed by the TRAIN + VALIDATION years and by
+    # nothing else. Intersecting across the test year too meant that a county
+    # whose utility stopped reporting in 2023 was retroactively dropped from
+    # every year -- silently changing the rows the frozen model had been fitted
+    # on, at the moment the held-out year was opened, with config_sha256 unable
+    # to see it because it hashes config and not data.
+    cohort_years = [y for y in annual_sets
+                    if model_start.year <= y <= pd.Timestamp(cfg["val_end"]).year]
+    cohort_sets = {y: annual_sets[y] for y in sorted(cohort_years)}
+    seen = set().union(*cohort_sets.values()) if cohort_sets else set()
+    stable = set.intersection(*cohort_sets.values()) if cohort_sets else set()
     unstable = sorted(seen - stable)
     if unstable:
-        log.warning("excluding %d counties with changing annual reporting coverage: %s",
-                    len(unstable), unstable)
+        log.warning("excluding %d counties with changing annual reporting "
+                    "coverage across %s: %s", len(unstable),
+                    f"{min(cohort_sets)}-{max(cohort_sets)}" if cohort_sets else "-",
+                    unstable)
     reporting = sorted(stable)
+
+    # A coverage change confined to the test year is reported, never acted on.
+    test_years = sorted(y for y in annual_sets if y > pd.Timestamp(cfg["val_end"]).year)
+    test_only_gaps: list[str] = []
+    for year in test_years:
+        gaps = sorted(set(reporting) - annual_sets[year])
+        if gaps:
+            log.warning("%d counties in the frozen cohort have NO %d records: "
+                        "%s. They are kept (their %d county-days will read as "
+                        "zero outage) and named in the coverage file -- this is "
+                        "a limitation to state, not a cohort edit.",
+                        len(gaps), year, gaps, year)
+            test_only_gaps.extend(gaps)
+    coverage = {
+        "cohort_years": sorted(cohort_sets),
+        "reporting_counties": reporting,
+        "n_reporting": len(reporting),
+        "excluded_unstable_counties": unstable,
+        "test_year_coverage_gaps": sorted(set(test_only_gaps)),
+    }
     raw = pd.concat(annual.values(), ignore_index=True)
     raw = raw[(raw.time >= start) & (raw.time < end_utc)
               & raw.fips.astype(str).isin(reporting)]
@@ -121,15 +161,18 @@ def build_hourly(cfg: Config, end: pd.Timestamp) -> tuple[pd.DataFrame, list[str
     if hourly.loc[hourly.time >= model_start, "baseline"].isna().any():
         raise ValueError("rolling baseline is incomplete at the model boundary")
     hourly["frac_excess"] = (hourly.frac_out - hourly.baseline).clip(lower=0)
-    return hourly[hourly.time >= model_start].copy(), unstable
+    return hourly[hourly.time >= model_start].copy(), coverage
 
 
 def build_events(hourly: pd.DataFrame, cfg: Config) -> pd.DataFrame:
     mod = runpy.run_path(str(ROOT / "src" / "03_build_events.py"))
     gb = book("phase2_events")
     events = mod["detect_events"](hourly, cfg, gb)
-    if not 500 <= len(events) <= 20_000:
-        log.warning("Phase 2 detected %d events; inspect county/event distributions", len(events))
+    lo, hi = [int(v) for v in cfg.get("expected_event_count", [500, 20_000])]
+    if not lo <= len(events) <= hi:
+        log.warning("Phase 2 detected %d events, outside the expected %d-%d; "
+                    "inspect county/event distributions", len(events), lo, hi)
+    gb.flush()
     return events
 
 
@@ -149,6 +192,7 @@ def open_month(path: Path):
 
 def build_weather(cfg: Config, end: pd.Timestamp) -> pd.DataFrame:
     mod = runpy.run_path(str(ROOT / "src" / "04_build_features.py"))
+    check_units = mod["check_units"]
     county_day_features = mod["county_day_features"]
     derived_features = mod["derived_features"]
     label_regimes = mod["label_regimes"]
@@ -162,20 +206,28 @@ def build_weather(cfg: Config, end: pd.Timestamp) -> pd.DataFrame:
         with open_month(path) as ds:
             local = Config(cfg.copy())
             local["window_days"] = int(ds.sizes["time"] // 24)
-            frame = county_day_features(ds, local, book(f"era5_{period}"))
+            gb = book(f"era5_{period}")
+            # Criterion 4. Units are, by this project's own docstring, the
+            # second-highest-probability failure in the pipeline -- and until
+            # now they were asserted on five days of 2019 and on none of the 72
+            # months the study is actually built from.
+            check_units(ds, local, gb)
+            frame = county_day_features(ds, local, gb)
+            gb.flush()
             frames.append(frame)
     weather = pd.concat(frames, ignore_index=True)
     weather = weather[pd.to_datetime(weather.date) <= pd.Timestamp(end)].copy()
+    # derived_features reads canopy_county.csv directly now, so the canopy
+    # interactions are correct the first time instead of being computed as NaN
+    # and silently recomputed here.
     weather = derived_features(weather, cfg)
-    canopy_path = PATHS.raw / "canopy_county.csv"
-    if canopy_path.exists():
-        canopy = pd.read_csv(canopy_path, dtype={"fips": str}).set_index("fips").canopy_pct
-        weather["canopy_pct"] = weather.fips.astype(str).map(canopy)
-        weather["gust_x_canopy"] = weather.gust_max * weather.canopy_pct
-        weather["ice_x_canopy"] = weather.freezing_rain_proxy * weather.canopy_pct
     weather = label_regimes(weather)
     if weather.canopy_pct.isna().any():
-        raise ValueError("canopy_pct is missing; Phase 2 requires canopy_pct_clip.tif")
+        missing = sorted(weather.loc[weather.canopy_pct.isna(), "fips"].unique())
+        raise SystemExit(
+            f"canopy_pct missing for {len(missing)} county(ies): {missing}. "
+            "Phase 2 requires data/raw/canopy_county.csv -- run "
+            "`make phase2-download-canopy`.")
     return weather
 
 
@@ -198,7 +250,7 @@ def join_targets(weather: pd.DataFrame, events: pd.DataFrame,
     merged["event"] = merged.customer_hours.notna().astype(int)
     merged["customer_hours"] = merged.customer_hours.fillna(0.0)
     merged["customer_hours_per_customer"] = merged.customer_hours / merged.mcc
-    merged["censored"] = merged.censored.fillna(False).astype(bool)
+    merged["censored"] = merged.censored.notna() & merged.censored.eq(True)
     merged["n_events"] = merged.n_events.fillna(0).astype(int)
 
     merged = merged.sort_values(["fips", "date"]).reset_index(drop=True)
@@ -219,13 +271,16 @@ def main() -> None:
                     help="required with --through test; opens held-out outcomes")
     args = ap.parse_args()
     cfg = load_config(args.config, args.phase2)
+    set_phase(2)
     if args.through == "test" and not args.acknowledge_test:
-        raise SystemExit("Refusing to open 2023. Add --acknowledge-test only after models are frozen.")
+        raise SystemExit(
+            f"Refusing to open {pd.Timestamp(cfg['test_start']).year}. Add "
+            "--acknowledge-test only after models are frozen.")
     end = pd.Timestamp(cfg["val_end"] if args.through == "validation" else cfg["test_end"])
-    paths = output_paths()
+    paths = output_paths(args.through)
 
     with timed("phase2_event_build", log):
-        hourly, unstable = build_hourly(cfg, end)
+        hourly, coverage = build_hourly(cfg, end)
         events = build_events(hourly, cfg)
     with timed("phase2_weather_build", log):
         weather = build_weather(cfg, end)
@@ -235,13 +290,13 @@ def main() -> None:
     events.to_parquet(paths["events"], index=False)
     weather.to_parquet(paths["weather"], index=False)
     merged.to_parquet(paths["merged"], index=False)
-    paths["coverage"].write_text(json.dumps({
-        "excluded_unstable_counties": unstable,
-        "through": args.through,
-        "end": str(end.date()),
-    }, indent=2))
-    log.info("Phase 2 tables: %d county-days, %d events, %d hourly rows",
-             len(merged), len(events), len(hourly))
+    paths["coverage"].write_text(json.dumps(
+        {**coverage, "through": args.through, "end": str(end.date())}, indent=2))
+    log.info("Phase 2 tables (%s scope): %d county-days, %d events, %d hourly "
+             "rows, %d reporting counties",
+             args.through, len(merged), len(events), len(hourly),
+             coverage["n_reporting"])
+    log.info("wrote %s", paths["merged"].name)
 
 
 if __name__ == "__main__":

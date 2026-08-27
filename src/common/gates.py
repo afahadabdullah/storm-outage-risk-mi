@@ -9,13 +9,23 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, asdict
-from pathlib import Path
 
 from .config import PATHS
 
 
-def _gate_file():
-    return PATHS.logs / "phase1_gates.json"
+# Which phase's gate file `book()` writes to. Phase 2 sets this to 2 at start
+# of run; without it every Phase 2 gate record lands in phase1_gates.json and
+# `make gates` folds Phase 2 evidence into the Phase 1 go/no-go table.
+_PHASE = 1
+
+
+def set_phase(phase: int) -> None:
+    global _PHASE
+    _PHASE = int(phase)
+
+
+def _gate_file(phase: int | None = None):
+    return PATHS.logs / f"phase{_PHASE if phase is None else phase}_gates.json"
 
 
 # Section 7 go/no-go table. Criterion 6 is the real gate.
@@ -83,8 +93,8 @@ class GateBook:
             prior + [asdict(r) for r in self.records], indent=2))
 
     @staticmethod
-    def load_all() -> list[dict]:
-        f = _gate_file()
+    def load_all(phase: int | None = None) -> list[dict]:
+        f = _gate_file(phase)
         return json.loads(f.read_text()) if f.exists() else []
 
     @staticmethod
@@ -98,9 +108,9 @@ def book(step: str) -> GateBook:
     return GateBook(step=step)
 
 
-def criteria_report() -> tuple[str, bool]:
+def criteria_report(phase: int | None = None) -> tuple[str, bool]:
     """Render the section 7 table. Returns (markdown, all_passed)."""
-    recs = GateBook.load_all()
+    recs = GateBook.load_all(phase)
     by_crit: dict[int, list[dict]] = {}
     for r in recs:
         if r.get("criterion"):

@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import requests
 
-from src.common.config import PATHS, base_parser, config_from_args, state_prefixes
+from src.common.config import PATHS, base_parser, config_from_args
 from src.common.geo import fetch_counties
 from src.common.io_outage import normalize_outage_frame
 from src.common.logio import dir_size_mb, get_logger, record, timed

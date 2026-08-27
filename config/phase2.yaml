@@ -12,4 +12,14 @@ forecast_parametric_draws: 100
 storm_gap_days: 2
 cv_n_estimators: 200
 cv_leave_one_county_out: true
+# A storm day is one where at least this share of reporting counties is in
+# event. Defining it as "any county anywhere" saturates at 83 counties and
+# fuses the whole record into a single CV group -- see storm_groups().
+storm_min_county_frac: 0.10
+# Isotonic calibration is fitted on 2022. Scoring it on the same rows flatters
+# it, so the reported validation metrics come from out-of-fold calibrated
+# probabilities using this many folds within the validation year.
+calibration_cv_folds: 5
+# Reference models the spec requires as skill floors (sections 6.1, 6.2).
+fit_reference_models: true
 

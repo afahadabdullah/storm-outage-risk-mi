@@ -15,11 +15,13 @@ P2      ?= config/phase2.yaml
 SRC      = src
 
 .DEFAULT_GOAL := help
-.PHONY: help env env-pip env-lock doctor window fetch weather events features models compose forecast \
+.PHONY: help env env-pip env-lock doctor doctor-phase2 window fetch weather events features models compose forecast \
         value phase1 phase1-synthetic phase1-diff gates gates-synthetic test lint \
         clean-phase1 clean-synthetic era5-only phase2-download phase2-download-outages \
         phase2-download-era5 phase2-download-gefs phase2-download-canopy phase2-build \
-        phase2-train phase2 phase2-build-test phase2-test phase2-submit
+        phase2-train phase2 phase2-build-test phase2-test phase2-submit \
+        phase2-compose phase2-forecast phase2-forecast-synthetic phase2-value \
+        phase2-apply phase2-preflight
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -36,7 +38,10 @@ env-lock: ## capture the exact solve -- THIS is the reproducible artifact
 	@echo "wrote env/environment.lock.yml -- commit it alongside any results"
 
 doctor: ## preflight a fresh machine: packages, ~/.cdsapirc, network, disk
-	@$(PY) $(SRC)/doctor.py
+	@$(PY) $(SRC)/doctor.py --phase 1
+
+doctor-phase2: ## same, but the Phase 2 lazy imports are REQUIRED, not optional
+	@$(PY) $(SRC)/doctor.py --phase 2
 
 # ---- individual steps -------------------------------------------------------
 window: ## step 0: pick the 5-day window from data (spec section 3)
@@ -113,11 +118,34 @@ phase2-train: ## fit 2018-2021, calibrate and validate on 2022
 phase2: ## preprocess + train/validate; downloads must already be cached
 	$(PY) src/run_phase2.py --config $(CFG) --phase2 $(P2)
 
-phase2-build-test: ## explicitly open/build held-out 2023 outcomes
+# ---- Phase 2 application stages (spec sections 6.4, 8, 9) -------------------
+# None of these touch the test year. They run against the frozen bundle and the
+# validation-scope table, so they can be built and reviewed while the test year
+# is still sealed.
+phase2-compose: ## section 6.4: Monte Carlo composition of the three models
+	$(PY) src/phase2_compose.py --config $(CFG) --phase2 $(P2)
+
+phase2-forecast: ## section 8: GEFS case studies, bias correction, 31x100 realizations
+	$(PY) src/phase2_forecast.py --config $(CFG) --phase2 $(P2)
+
+phase2-forecast-synthetic: ## same plumbing on stand-in members; NO skill implied
+	$(PY) src/phase2_forecast.py --config $(CFG) --phase2 $(P2) --synthetic-gefs
+
+phase2-value: ## section 9: cost-loss value, break-even inspection cost, EVPI
+	$(PY) src/phase2_value.py --config $(CFG) --phase2 $(P2)
+
+phase2-apply: phase2-compose phase2-forecast phase2-value ## all three application stages
+
+phase2-preflight: ## everything that must be green before submitting anything
+	$(MAKE) doctor-phase2
+	$(MAKE) lint
+	$(MAKE) test
+
+phase2-build-test: ## explicitly open/build the held-out test year
 	$(PY) src/phase2_build.py --config $(CFG) --phase2 $(P2) --through test --acknowledge-test
 
-phase2-test: ## score frozen model on 2023 exactly once
+phase2-test: ## score frozen model on the test year exactly once
 	$(PY) src/phase2_train.py --config $(CFG) --phase2 $(P2) --evaluate-test
 
-phase2-submit: ## submit CPU-only Slurm download -> build -> train chain
+phase2-submit: ## submit CPU-only Slurm download -> build -> train -> apply chain
 	bash slurm/submit_phase2.sh
