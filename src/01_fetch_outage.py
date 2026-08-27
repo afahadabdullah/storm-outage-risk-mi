@@ -28,7 +28,10 @@ FIGSHARE_API = "https://api.figshare.com/v2/articles/{article}/files"
 
 
 def figshare_files(article: int) -> dict[str, dict]:
-    r = requests.get(FIGSHARE_API.format(article=article), timeout=60)
+    # Figshare defaults this endpoint to ten files. The current article has
+    # more than ten, and the default page happens to omit 2020-2024.
+    r = requests.get(FIGSHARE_API.format(article=article),
+                     params={"page_size": 1000}, timeout=60)
     r.raise_for_status()
     return {f["name"]: f for f in r.json()}
 

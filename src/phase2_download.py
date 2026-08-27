@@ -79,7 +79,7 @@ def fetch_outages(cfg: Config, years: list[int], force: bool = False) -> None:
                 raise SystemExit(
                     f"EAGLE-I years {gaps} are not in figshare article "
                     f"{cfg['sources']['eaglei_figshare_article']}. The article "
-                    f"carries {min(have)}-{max(have)}. Either the frozen splits "
+                    f"carries {sorted(have)}. Either the frozen splits "
                     "in region.yaml reach past the archive, or the article "
                     "moved -- fix region.yaml, do not work around this.")
             log.info("figshare carries EAGLE-I %d-%d; study period %d-%d is covered",

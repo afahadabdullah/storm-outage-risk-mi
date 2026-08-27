@@ -51,6 +51,37 @@ def test_ingestion_is_tz_aware_utc():
     assert str(out.run_start_time.dt.tz) == "UTC"
 
 
+def test_figshare_listing_requests_every_article_file(monkeypatch):
+    """Figshare's ten-file default must not hide newer EAGLE-I years."""
+    import runpy
+
+    mod = runpy.run_path(str(ROOT / "src" / "01_fetch_outage.py"))
+    request: dict[str, object] = {}
+
+    class Response:
+        def raise_for_status(self):
+            request["status_checked"] = True
+
+        def json(self):
+            return [
+                {"name": "eaglei_outages_2019.csv"},
+                {"name": "eaglei_outages_2023.csv"},
+            ]
+
+    def fake_get(url, **kwargs):
+        request["url"] = url
+        request.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr(mod["requests"], "get", fake_get)
+    files = mod["figshare_files"](24237376)
+
+    assert request["params"] == {"page_size": 1000}
+    assert request["timeout"] == 60
+    assert request["status_checked"] is True
+    assert "eaglei_outages_2023.csv" in files
+
+
 def test_cost_loss_value_is_bounded_and_varies():
     import runpy
     mod = runpy.run_path(str(ROOT / "src" / "08_decision_value.py"))
