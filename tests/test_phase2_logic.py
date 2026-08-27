@@ -10,7 +10,14 @@ from sklearn.model_selection import GroupKFold
 from src import phase2_build
 from src.common.config import Config
 from src.phase2_backtest import county_skill, skill_matrix
-from src.phase2_forecast import ensure_finite_forecast_features, forecast_feature_fills
+from src.phase2_forecast import (
+    ensure_finite_forecast_features,
+    fit_quantile_map,
+    forecast_feature_fills,
+    model_forecast_cohort,
+    quantile_distance,
+    quantile_map_cellwise,
+)
 from src.phase2_train import (
     _interp_log_quantiles,
     crps_from_quantiles,
@@ -176,3 +183,21 @@ def test_forecast_feature_guard_uses_frozen_training_medians_only():
     repaired = ensure_finite_forecast_features(rows, bundle, fills, "test")
     assert repaired.feature_a.item() == 4.0
     assert repaired.feature_b.item() == 3.0
+
+
+def test_forecast_uses_the_frozen_reporting_counties_not_every_grid_county():
+    cohort, positions = model_forecast_cohort(
+        {"reporting_counties": ["26003", "26001"]}, ["26001", "26003", "26005"])
+    assert cohort == ["26003", "26001"]
+    assert positions.tolist() == [1, 0]
+
+
+def test_pooled_quantile_mapping_reduces_quantile_distance():
+    rng = np.random.default_rng(4)
+    raw = rng.normal(4.0, 0.8, size=(500, 3)).clip(0)
+    reference = rng.normal(7.0, 1.1, size=(3000, 3)).clip(0)
+    source_q = fit_quantile_map(raw)
+    reference_q = fit_quantile_map(reference)
+    mapped = quantile_map_cellwise(raw, source_q, reference_q)
+    assert quantile_distance(fit_quantile_map(mapped), reference_q) < \
+           quantile_distance(source_q, reference_q)
