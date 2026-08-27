@@ -25,7 +25,7 @@ from src.common.logio import get_logger, timed
 log = get_logger("phase2_build")
 
 
-def output_paths(through: str = "validation") -> dict[str, Path]:
+def output_paths(scope: str = "validation") -> dict[str, Path]:
     """Artifact paths, namespaced by scope.
 
     The test build writes its own files rather than overwriting the
@@ -34,7 +34,7 @@ def output_paths(through: str = "validation") -> dict[str, Path]:
     containing 2023) and the only way back was to repeat a 72-file ERA5
     aggregation to rebuild a table you already had.
     """
-    suffix = "" if through == "validation" else "_test"
+    suffix = "" if scope == "validation" else f"_{scope}"
     return {
         "hourly": PATHS.processed / f"phase2_county_hourly{suffix}.parquet",
         "events": PATHS.processed / f"phase2_events{suffix}.parquet",
@@ -42,6 +42,32 @@ def output_paths(through: str = "validation") -> dict[str, Path]:
         "merged": PATHS.processed / f"phase2_merged{suffix}.parquet",
         "coverage": PATHS.processed / f"phase2_coverage_exclusions{suffix}.json",
     }
+
+
+def available_backtest_end(cfg: Config, year: int) -> pd.Timestamp:
+    """Return the last *contiguously cached* complete weather month in ``year``.
+
+    EAGLE-I is downloaded as an annual file, but ERA5 is deliberately cached
+    month-by-month.  Looking only for the final file would let a missing June
+    quietly create a backtest with a hole in its covariates.  A retrospective
+    backtest must instead stop before the first unavailable month.
+    """
+    first = pd.Period(f"{year}-01", freq="M")
+    last = pd.Period(f"{year}-12", freq="M")
+    complete: list[pd.Period] = []
+    for period in pd.period_range(first, last, freq="M"):
+        path = PATHS.raw / "era5_monthly" / f"era5_{period.year}{period.month:02d}.nc"
+        if not path.exists():
+            break
+        complete.append(period)
+    if not complete:
+        raise SystemExit(
+            f"No cached ERA5 month for {year}; run the monthly ERA5 download job first")
+    end = complete[-1].end_time.normalize()
+    if len(complete) < 12:
+        log.warning("%d backtest stops at %s: ERA5 is available for %d contiguous month(s)",
+                    year, end.date(), len(complete))
+    return end
 
 
 def load_mcc() -> pd.Series:
@@ -305,7 +331,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default=str(ROOT / "config" / "region.yaml"))
     ap.add_argument("--phase2", default=str(ROOT / "config" / "phase2.yaml"))
-    ap.add_argument("--through", choices=["validation", "test"], default="validation")
+    ap.add_argument("--through", choices=["validation", "test", "backtest"],
+                    default="validation")
+    ap.add_argument("--backtest-year", type=int,
+                    help="retrospective year after validation and before the sealed test")
     ap.add_argument("--acknowledge-test", action="store_true",
                     help="required with --through test; opens held-out outcomes")
     args = ap.parse_args()
@@ -315,8 +344,26 @@ def main() -> None:
         raise SystemExit(
             f"Refusing to open {pd.Timestamp(cfg['test_start']).year}. Add "
             "--acknowledge-test only after models are frozen.")
-    end = pd.Timestamp(cfg["val_end"] if args.through == "validation" else cfg["test_end"])
-    paths = output_paths(args.through)
+    if args.through == "backtest":
+        if args.backtest_year is None:
+            raise SystemExit("--through backtest requires --backtest-year YEAR")
+        year = int(args.backtest_year)
+        val_end = pd.Timestamp(cfg["val_end"])
+        sealed_test = pd.Timestamp(cfg["test_start"])
+        if (pd.Timestamp(f"{year}-01-01") <= val_end
+                or pd.Timestamp(f"{year}-01-01") >= sealed_test):
+            raise SystemExit(
+                "A retrospective backtest must be after validation and before the "
+                f"sealed test window ({val_end.date()} to {sealed_test.date()}).")
+        outage_path = PATHS.raw / f"eaglei_outages_{year}.csv"
+        if not outage_path.exists():
+            raise SystemExit(f"{outage_path} missing -- run `make phase2-download-outages`")
+        end = available_backtest_end(cfg, year)
+        scope = f"backtest_{year}"
+    else:
+        end = pd.Timestamp(cfg["val_end"] if args.through == "validation" else cfg["test_end"])
+        scope = args.through
+    paths = output_paths(scope)
 
     with timed("phase2_event_build", log):
         hourly, coverage = build_hourly(cfg, end)
@@ -330,10 +377,11 @@ def main() -> None:
     weather.to_parquet(paths["weather"], index=False)
     merged.to_parquet(paths["merged"], index=False)
     paths["coverage"].write_text(json.dumps(
-        {**coverage, "through": args.through, "end": str(end.date())}, indent=2))
+        {**coverage, "through": args.through, "scope": scope,
+         "end": str(end.date())}, indent=2))
     log.info("Phase 2 tables (%s scope): %d county-days, %d events, %d hourly "
              "rows, %d reporting counties",
-             args.through, len(merged), len(events), len(hourly),
+             scope, len(merged), len(events), len(hourly),
              coverage["n_reporting"])
     log.info("wrote %s", paths["merged"].name)
 

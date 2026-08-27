@@ -21,7 +21,7 @@ SRC      = src
         clean-phase1 clean-synthetic era5-only phase2-download phase2-download-outages \
         phase2-download-arco phase2-download-era5 phase2-download-gefs \
         phase2-download-canopy phase2-build \
-        phase2-train phase2 phase2-build-test phase2-test phase2-submit \
+        phase2-train phase2 phase2-build-test phase2-test phase2-backtest-2021 phase2-submit \
         phase2-compose phase2-forecast phase2-forecast-synthetic phase2-value \
         phase2-apply phase2-preflight
 
@@ -154,6 +154,10 @@ phase2-build-test: ## explicitly open/build the held-out test year
 
 phase2-test: ## score frozen model on the test year exactly once
 	$(PY) src/phase2_train.py --config $(CFG) --phase2 $(P2) --evaluate-test
+
+phase2-backtest-2021: ## retrospective 2021 score + diagnostics; leaves 2023 sealed
+	$(PY) src/phase2_build.py --config $(CFG) --phase2 $(P2) --through backtest --backtest-year 2021
+	$(PY) src/phase2_backtest.py --config $(CFG) --phase2 $(P2) --year 2021
 
 phase2-submit: ## sequential Slurm pipeline; each stage is watched and must succeed
 	bash slurm/submit_phase2.sh

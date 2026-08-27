@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 from sklearn.model_selection import GroupKFold
 
+from src import phase2_build
 from src.common.config import Config
+from src.phase2_backtest import county_skill, skill_matrix
 from src.phase2_train import (
     _interp_log_quantiles,
     crps_from_quantiles,
@@ -122,3 +126,37 @@ def test_quantile_extrapolation_is_monotone_and_extends_the_tails():
     # the extrapolated tails must go beyond the trained range, not clamp to it
     assert (out[:, 0] < base[:, 0]).all()
     assert (out[:, -1] > base[:, -1]).all()
+
+
+def test_backtest_skill_outputs_are_partitioned_by_month_and_county():
+    """The diagnostic artifacts must retain the strata needed to inspect skill."""
+    prediction = pd.DataFrame({
+        "fips": ["26001", "26003", "26001", "26003", "26001", "26003"],
+        "date": pd.to_datetime(["2021-01-01", "2021-01-01", "2021-01-02",
+                                 "2021-01-02", "2021-02-01", "2021-02-01"]),
+        "event": [0, 1, 0, 1, 1, 0],
+        "probability": [0.1, 0.8, 0.2, 0.7, 0.8, 0.1],
+        "reference_climatology_county": [0.4] * 6,
+        "customer_hours": [0, 100, 0, 120, 140, 0],
+        "magnitude_q05": [0, 50, 0, 60, 70, 0],
+        "magnitude_q50": [0, 100, 0, 120, 140, 0],
+        "magnitude_q95": [0, 150, 0, 180, 210, 0],
+    })
+    train = pd.DataFrame({"event": [1, 1, 1, 0],
+                          "customer_hours": [80, 110, 150, 0]})
+    matrix = skill_matrix(prediction, train, [0.05, 0.50, 0.95])
+    counties = county_skill(prediction)
+    assert matrix.month.tolist() == [1, 2]
+    assert matrix.loc[matrix.month.eq(1), "n_events"].item() == 2
+    assert counties.fips.tolist() == ["26001", "26003"]
+    assert {"brier_skill", "observed_event_rate", "probability_bias"} <= set(counties)
+
+
+def test_backtest_ends_before_the_first_missing_weather_month(tmp_path, monkeypatch):
+    """A late cache file must not hide a missing month in the score window."""
+    monthly = tmp_path / "era5_monthly"
+    monthly.mkdir()
+    for month in (1, 2, 4):
+        (monthly / f"era5_2021{month:02d}.nc").touch()
+    monkeypatch.setattr(phase2_build, "PATHS", SimpleNamespace(raw=tmp_path))
+    assert phase2_build.available_backtest_end(Config({}), 2021) == pd.Timestamp("2021-02-28")

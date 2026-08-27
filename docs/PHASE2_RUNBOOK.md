@@ -245,6 +245,32 @@ longer burns the single attempt.
 Whatever comes out, report it. If the numbers disappoint, diagnose and write the
 diagnosis — do not go back and tune (spec §7.4).
 
+## Retrospective 2021 backtest
+
+For an exploratory temporal check before the sealed final test, run:
+
+```bash
+sbatch slurm/phase2_backtest_2021.sbatch
+```
+
+This loads the existing frozen bundle, scores 2021 only, and does **not** create
+`models/TEST_YEAR_OPENED.txt` or alter the 2023 final-test artifacts. The build
+uses every *contiguously available* local ERA5 month starting in January; it
+stops at the first missing month rather than leaving a hidden gap. Review:
+
+```text
+data/processed/phase2_backtest_2021_metrics.json
+data/processed/phase2_backtest_2021_skill_matrix.csv
+data/processed/phase2_backtest_2021_county_skill.csv
+figures/phase2_backtest_2021_*_diagnostics.png
+figures/phase2_backtest_2021_*_maps.png
+```
+
+The diagnostics figure contains reliability, precision-recall, a
+month-by-metric skill matrix, and whole-window scores. The maps show county
+Brier skill against the frozen county climatology, observed event rate, mean
+forecast probability, and probability bias.
+
 ## Direct commands without Slurm
 
 ```bash
@@ -258,6 +284,7 @@ make phase2                 # build through 2022, train, calibrate, validate
 make phase2-apply           # composition, forecast, decision value
 make phase2-build-test      # only after decisions are frozen
 make phase2-test            # one-time 2023 score
+make phase2-backtest-2021   # exploratory 2021 diagnostics; 2023 remains sealed
 ```
 
 ## Testing without any data
