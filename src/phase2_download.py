@@ -353,6 +353,47 @@ def _load_era5_part(path: Path):
     return ds
 
 
+def _align_cds_grid_to_arco(arco, cds):
+    """Select CDS residual fields on the exact grid used by the ARCO fields.
+
+    Both products are ERA5 at 0.25 degrees, but their independent bounding-box
+    selections can include a different outer row or column.  The ARCO slice is
+    the authoritative regional grid for the combined monthly cache.
+    """
+    import numpy as np
+
+    for coordinate in ("latitude", "longitude"):
+        if coordinate not in arco.coords or coordinate not in cds.coords:
+            raise RuntimeError(
+                f"Cannot align hybrid ERA5 fields: missing {coordinate!r} coordinate"
+            )
+        target = np.asarray(arco[coordinate].values)
+        source = np.asarray(cds[coordinate].values)
+        if target.ndim != 1 or source.ndim != 1:
+            raise RuntimeError(
+                f"Cannot align hybrid ERA5 fields: {coordinate!r} is not one-dimensional"
+            )
+        nearest = np.min(np.abs(source[:, None] - target[None, :]), axis=0)
+        if nearest.size == 0 or float(nearest.max()) > 0.01:
+            raise RuntimeError(
+                f"CDS {coordinate} grid does not match the ARCO grid "
+                f"(largest nearest offset {float(nearest.max()):.4f} degrees)"
+            )
+
+    aligned = cds.reindex(
+        latitude=arco.latitude,
+        longitude=arco.longitude,
+        method="nearest",
+        tolerance=0.01,
+    )
+    log.info(
+        "aligned CDS residual grid %dx%d to ARCO grid %dx%d",
+        cds.sizes["latitude"], cds.sizes["longitude"],
+        arco.sizes["latitude"], arco.sizes["longitude"],
+    )
+    return aligned
+
+
 def era5_month_status(path: Path, cfg: Config, year: int,
                       month: int) -> tuple[bool, str]:
     valid, reason = era5_file_status(path)
@@ -412,7 +453,7 @@ def fetch_era5_month(cfg: Config, year: int, month: int,
         if cds_variables:
             _download_cds_month(cfg, year, month, cds_variables, cds_download)
             publish_era5_download(cds_download, cds_tmp)
-            parts.append(_load_era5_part(cds_tmp))
+            parts.append(_align_cds_grid_to_arco(parts[0], _load_era5_part(cds_tmp)))
         try:
             merged = xr.merge(parts, compat="override", join="exact")
             encoding = {name: {"zlib": True, "complevel": 1}

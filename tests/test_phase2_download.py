@@ -128,9 +128,12 @@ def test_arco_and_cds_parts_publish_one_complete_month(tmp_path, monkeypatch):
         names = [ERA5_TO_SHORT[name] for name in variables]
         cds_coords = dict(coords)
         cds_coords["valid_time"] = cds_coords.pop("time")
+        cds_coords["latitude"] = [44.25, 44.0, 43.75]
+        cds_coords["longitude"] = [-85.25, -85.0, -84.75]
+        cds_shape = (len(times), 3, 3)
         xr.Dataset(
             {name: (("valid_time", "latitude", "longitude"),
-                    np.ones(shape, dtype=np.float32)) for name in names},
+                    np.ones(cds_shape, dtype=np.float32)) for name in names},
             coords=cds_coords,
         ).to_netcdf(dest, engine="netcdf4")
 
