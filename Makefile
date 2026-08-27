@@ -3,7 +3,7 @@
 #   make phase1-synthetic   full pipeline on generated data -- no credentials
 #   make phase1             full pipeline on real data (needs ~/.cdsapirc)
 # =============================================================================
-ENV_PREFIX := /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk
+ENV_PREFIX := /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk.
 PY      := $(ENV_PREFIX)/bin/python
 
 # On shared machines ~/.local/lib/pythonX.Y/site-packages shadows the conda env

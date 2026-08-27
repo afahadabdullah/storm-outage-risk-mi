@@ -1,7 +1,7 @@
 # Shared runtime for every Phase 2 batch job.
 # Use an absolute interpreter path: login shells can discard an activated
 # Conda environment before the first Python import.
-PHASE2_ENV="/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk"
+PHASE2_ENV="/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk."
 PHASE2_PYTHON="${PHASE2_ENV}/bin/python"
 
 if [[ ! -x "${PHASE2_PYTHON}" ]]; then
@@ -11,4 +11,3 @@ fi
 
 export PATH="${PHASE2_ENV}/bin:${PATH}"
 export PYTHONNOUSERSITE=1
-

@@ -49,7 +49,7 @@ no days clear it, or almost all do, adjust `storm_min_county_frac` in
 The Phase 2 Makefile and every Slurm job use this interpreter directly:
 
 ```text
-/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python
 ```
 
 The batch scripts deliberately do not use login shells: a login shell reset the
@@ -58,7 +58,7 @@ activated Conda environment and caused every job to fail at `import pandas`.
 ```bash
 cd /panfs/ccds02/nobackup/people/afahad/project/storm-outage-risk-mi
 git pull --ff-only origin main
-conda activate /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk
+conda activate /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk.
 make phase2-preflight        # doctor --phase 2, lint, tests
 mkdir -p logs/slurm
 ```
@@ -73,7 +73,7 @@ Confirm the CDS token works **from a compute node**, not just the login node:
 
 ```bash
 srun --pty -t 00:10:00 --mem=4G bash -lc \
-  '/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python -c "import cdsapi, ngboost, lifelines, properscoring, statsmodels; print(\"ok\")"'
+  '/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python -c "import cdsapi, ngboost, lifelines, properscoring, statsmodels; print(\"ok\")"'
 ```
 
 Data live under `data/raw`, so the repository should remain on project or
@@ -114,7 +114,7 @@ tail -f logs/slurm/storm-p2-train-*.out
 Every downloader is cache-aware. A failed monthly task can be restarted:
 
 ```bash
-/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python \
   src/phase2_download.py --only era5 --years 2020 --months 7
 ```
 
@@ -239,7 +239,7 @@ coordinate names, two annual EAGLE-I CSVs — that runs the whole chain in about
 twenty seconds with no downloads and no credentials:
 
 ```bash
-/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python \
   tests/phase2_fixture.py /tmp/p2scratch
 ```
 

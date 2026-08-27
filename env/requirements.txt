@@ -1,6 +1,6 @@
 # pip / uv path. Use this when conda is unavailable or its solve is slow.
 #   make env-pip
-# This installs into /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk.
+# This installs into `/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk.`
 #
 # All of these have manylinux wheels, so nothing compiles from source on a
 # normal x86-64 Linux box. If a wheel is missing for your platform (aarch64,

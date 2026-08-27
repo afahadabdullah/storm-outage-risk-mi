@@ -20,9 +20,9 @@ converted into a decision-economic answer.
 ## Quickstart
 
 ```bash
-mamba env create --prefix /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk \
+mamba env create --prefix /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk. \
   -f env/environment.yml
-conda activate /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk
+conda activate /panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk.
 make doctor                  # packages, ~/.cdsapirc, egress, disk
 make phase1-synthetic        # ~5 s, no credentials, no downloads
 make test
@@ -43,12 +43,12 @@ follows, with wait times, credentials, tmux and triage.
 # queued until the window is chosen, which needs the outage data first. That
 # constraint fixes the order below.
 make fetch                            # EAGLE-I annual CSV + MCC + TIGER counties
-/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python \
   src/select_window.py --write       # pick the 5-day window FROM THE DATA
 nohup make era5-only &                # queue ERA5, then go do something else
-/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python \
   src/02_fetch_weather.py --only gefs
-/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk/bin/python \
+/panfs/ccds02/nobackup/people/afahad/envs/storm-outage-risk./bin/python \
   src/02_fetch_weather.py --only canopy
 make phase1                           # raw -> decision number, one command
 ```
