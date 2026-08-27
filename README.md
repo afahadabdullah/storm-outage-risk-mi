@@ -36,6 +36,10 @@ and annotated medians illustrate the types of inputs and outputs, rather than
 empirical estimates from a completed run. Replace those panel graphics with
 generated model output before using the figure to report results.
 
+For a detailed interpretation of the model, verification metrics, risk terms,
+and current economic assumptions, see the
+[atmospheric-science overview](docs/ATMOSPHERIC_SCIENTIST_OVERVIEW.md).
+
 ## Data
 
 | Data product | Coverage | Role in the analysis |
