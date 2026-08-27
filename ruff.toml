@@ -1,0 +1,6 @@
+target-version = "py311"
+
+[lint]
+# Keep CI/preflight independent of a developer's global Ruff configuration.
+# Use a small, explicit baseline so upgrades do not silently enable new rules.
+select = ["E4", "E7", "E9", "F", "I", "EXE001", "RUF100"]
