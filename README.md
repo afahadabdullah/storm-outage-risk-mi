@@ -73,6 +73,19 @@ produce a county-level distribution of customers affected, customer-hours, and
 cost. Calibration and storm-aware cross-validation evaluate the models without
 treating nearby days from the same storm as independent evidence.
 
+### Encouraging retrospective results
+
+With its parameters frozen, the Phase 2 model retained useful skill in the
+available 2021 backtest window (January--May): it achieved an AUC of **0.760**,
+showing strong discrimination between event and non-event county-days; a Brier
+skill score of **0.084** against the demanding county-specific climatology; and
+a magnitude CRPS skill score of **0.230**. In practical terms, the model
+continues to rank higher-risk county-days well, improves probabilistic outage
+estimates beyond each county's historical baseline, and produces more useful
+conditional outage-magnitude distributions than climatology alone. This is a
+retrospective backtest, not the sealed 2023 final evaluation; full details are
+in [the 2021 backtest results](docs/phase2_backtest_2021_results.md).
+
 ### Forecast and decision analysis
 
 For the two 2023 case studies, GEFS members provide day-5, day-3, day-2, and
