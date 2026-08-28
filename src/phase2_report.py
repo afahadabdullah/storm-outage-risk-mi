@@ -1,9 +1,11 @@
 #!/usr/bin/env python
-"""Build result matrices and publication figures from frozen Phase 2 artifacts.
+"""Build matrices and publication figures from frozen Phase 2 artifacts.
 
 This reporting layer never fits or scores a model. It uses the honest OOF
 validation predictions, or the once-only 2023 predictions after the test marker
-exists, and summarizes the two configured GEFS case studies separately.
+exists, and summarizes the two configured GEFS case studies separately. County
+and weather-map diagnostics are descriptive views of the evaluated split; they
+never enter fitting, calibration, or model selection.
 """
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ plotstyle.apply()
 
 MATRIX_PATH = PATHS.processed / "phase2_results_matrix.csv"
 CASE_MATRIX_PATH = PATHS.processed / "phase2_gefs_case_matrix.csv"
+COUNTY_MATRIX_PATH = PATHS.processed / "phase2_county_skill.csv"
 RESULTS_PATH = ROOT / "docs" / "phase2_results.md"
 
 METRICS = [
@@ -205,7 +208,7 @@ def plot_skill_summary(cfg: Config, artifacts: dict) -> tuple[Path, Path] | None
         return None
     y = pred.event.astype(int).to_numpy()
     probability = pred.probability.to_numpy()
-    fig, axes = plt.subplots(2, 2, figsize=(11.2, 8.0))
+    fig, axes = plt.subplots(2, 3, figsize=(14.0, 8.0))
 
     ax = axes[0, 0]
     frac, mean = calibration_curve(y, probability, n_bins=10, strategy="quantile")
@@ -226,6 +229,21 @@ def plot_skill_summary(cfg: Config, artifacts: dict) -> tuple[Path, Path] | None
     ax.legend(loc="upper right")
     plotstyle.panel(
         ax, "b", f"Precision–recall · AP {metrics['occurrence_average_precision']:.3f}")
+
+    ax = axes[0, 2]
+    pit = metrics.get("magnitude_pit_histogram_10bin")
+    if pit and sum(pit):
+        counts = np.asarray(pit, dtype=float)
+        centres = np.linspace(0.05, 0.95, len(counts))
+        ax.bar(centres, counts / counts.sum(), width=0.085, color=plotstyle.ACCENT,
+               edgecolor="white", linewidth=1)
+        ax.axhline(1 / len(counts), color=plotstyle.FAINT, ls="--", lw=1)
+        ax.set(xlim=(0, 1), xlabel="probability integral transform",
+               ylabel="share of events")
+    else:
+        ax.text(0.5, 0.5, "magnitude PIT unavailable", ha="center", va="center",
+                color=plotstyle.MUTED)
+    plotstyle.panel(ax, "c", "Magnitude PIT · flat is calibrated")
 
     ax = axes[1, 0]
     entries = [
@@ -248,9 +266,32 @@ def plot_skill_summary(cfg: Config, artifacts: dict) -> tuple[Path, Path] | None
     ax.set_xlabel("Brier score · lower is better")
     ax.set_xlim(0, max(values, default=1) * 1.25)
     ax.grid(axis="y", visible=False)
-    plotstyle.panel(ax, "c", "Required reference models")
+    plotstyle.panel(ax, "d", "Required reference models")
 
     ax = axes[1, 1]
+    regimes = metrics.get("by_regime") or {}
+    rows = [(name, values) for name, values in regimes.items()
+            if isinstance(values, dict) and isinstance(values.get("brier"), (int, float))]
+    if rows:
+        rows.sort(key=lambda item: item[1].get("n", 0))
+        names = [name.replace("_", "\n") for name, _ in rows]
+        brier_values = [regime_values["brier"] for _, regime_values in rows]
+        colors = [plotstyle.REGIME_COLORS.get(name, plotstyle.REFERENCE)
+                  for name, _ in rows]
+        bars = ax.barh(names, brier_values, color=colors, height=0.6)
+        for bar, (_, regime_values) in zip(bars, rows):
+            ax.text(bar.get_width(), bar.get_y() + bar.get_height() / 2,
+                    f"  n={int(regime_values.get('n', 0)):,}", va="center", fontsize=7.5,
+                    color=plotstyle.MUTED)
+        ax.set_xlim(0, max(brier_values, default=1e-9) * 1.25)
+        ax.set_xlabel("Brier score · lower is better")
+        ax.grid(axis="y", visible=False)
+    else:
+        ax.text(0.5, 0.5, "hazard-regime results unavailable", ha="center", va="center",
+                color=plotstyle.MUTED)
+    plotstyle.panel(ax, "e", "Skill by hazard regime")
+
+    ax = axes[1, 2]
     cv = artifacts.get("cv")
     if cv is not None and len(cv):
         order = ["storm_blocked", "leave_one_county_out", "forward_year"]
@@ -267,7 +308,7 @@ def plot_skill_summary(cfg: Config, artifacts: dict) -> tuple[Path, Path] | None
     else:
         ax.text(0.5, 0.5, "cross-validation artifact unavailable",
                 ha="center", va="center", color=plotstyle.MUTED)
-    plotstyle.panel(ax, "d", "Temporal, spatial, and storm-blocked CV")
+    plotstyle.panel(ax, "f", "Temporal, spatial, and storm-blocked CV")
 
     fig.suptitle(f"Frozen outage-risk model performance — {label}",
                  x=0.01, ha="left", fontsize=14, fontweight="semibold")
@@ -277,6 +318,162 @@ def plot_skill_summary(cfg: Config, artifacts: dict) -> tuple[Path, Path] | None
                if artifacts["test_metrics"] is None else
                "The 2023 test was scored once with the frozen model and calibrator."))
     return plotstyle.save(fig, PATHS.figures / "phase2_skill_summary.png", note)
+
+
+def county_skill(prediction: pd.DataFrame, quantiles: list[float]) -> pd.DataFrame:
+    """County diagnostics for the evaluated split, not model fitting data."""
+    from sklearn.metrics import brier_score_loss
+
+    from src.phase2_train import crps_from_quantiles
+
+    qcols = [f"magnitude_q{int(round(q * 100)):02d}" for q in quantiles]
+    qcols = [column for column in qcols if column in prediction]
+    rows = []
+    for fips, group in prediction.groupby("fips"):
+        y = group.event.astype(int).to_numpy()
+        probability = group.probability.to_numpy()
+        climatology = group.reference_climatology_county.to_numpy()
+        brier = float(brier_score_loss(y, probability))
+        reference = float(np.mean((y - climatology) ** 2))
+        events = group[group.event.eq(1)]
+        magnitude_crps = np.nan
+        if len(events) >= 3 and len(qcols) == len(quantiles):
+            magnitude_crps = crps_from_quantiles(
+                events.customer_hours.to_numpy(), events[qcols].to_numpy(), quantiles)
+        rows.append({
+            "fips": str(fips).zfill(5),
+            "n_county_days": int(len(group)),
+            "n_events": int(y.sum()),
+            "observed_event_rate": float(y.mean()),
+            "mean_probability": float(probability.mean()),
+            "probability_bias": float(probability.mean() - y.mean()),
+            "brier": brier,
+            "brier_skill": 1 - brier / reference if reference > 0 else np.nan,
+            "magnitude_crps": magnitude_crps,
+            "observed_customer_hours": float(group.customer_hours.sum()),
+        })
+    return pd.DataFrame(rows).sort_values("fips").reset_index(drop=True)
+
+
+def load_geometry(cfg: Config):
+    """Load static county geometry; return None when a map cannot be made."""
+    import geopandas as gpd
+
+    path = PATHS.raw / f"tiger_counties_{cfg['sources']['tiger_year']}.parquet"
+    if not path.exists():
+        log.warning("county geometry missing: %s", path)
+        return None
+    geography = gpd.read_parquet(path)
+    key = next((name for name in ("GEOID", "fips", "FIPS") if name in geography), None)
+    if key is None:
+        log.warning("county geometry has no FIPS identifier: %s", list(geography))
+        return None
+    geography["fips"] = geography[key].astype(str).str.zfill(5)
+    return geography.to_crs(cfg["crs_analysis"])
+
+
+def plot_county_diagnostics(cfg: Config, counties: pd.DataFrame,
+                            label: str) -> tuple[Path, Path] | None:
+    """Show geographic variation without hiding sign on divergent diagnostics."""
+    import matplotlib.pyplot as plt
+
+    geometry = load_geometry(cfg)
+    if geometry is None or counties.empty:
+        return None
+    mapped = geometry.merge(counties, on="fips", how="left")
+    panels = [
+        ("observed_event_rate", "Observed event rate", "seq", "share of days"),
+        ("mean_probability", "Mean forecast probability", "seq", "probability"),
+        ("probability_bias", "Forecast bias", "div", "probability"),
+        ("brier_skill", "Brier skill vs county climatology", "div", "skill"),
+        ("n_events", "Observed event county-days", "seq", "count"),
+        ("magnitude_crps", "Magnitude CRPS", "seq", "customer-hours"),
+    ]
+    fig, axes = plt.subplots(2, 3, figsize=(14, 9.4))
+    for ax, (field, title, kind, unit), letter in zip(axes.flat, panels, "abcdef"):
+        values = pd.to_numeric(mapped[field], errors="coerce")
+        mapped.assign(_value=values).plot(
+            column="_value", ax=ax,
+            cmap=plotstyle.diverging() if kind == "div" else plotstyle.sequential(),
+            norm=plotstyle.diverging_norm(values) if kind == "div" else None,
+            linewidth=0.3, edgecolor="white", legend=True,
+            legend_kwds={"shrink": 0.62, "label": unit, "pad": 0.01},
+            missing_kwds={"color": plotstyle.MISSING, "edgecolor": "white"})
+        plotstyle.map_axes(ax)
+        plotstyle.panel(ax, letter, title)
+    fig.suptitle(f"County-level diagnostic results — {label}", x=0.01, ha="left",
+                 fontsize=14, fontweight="semibold")
+    fig.tight_layout(rect=(0, 0.04, 1, 0.965))
+    note = (f"{len(counties)} reporting counties. Orange/blue panels are centred "
+            "on zero; grey counties have no evaluable data. County estimates with "
+            "few events should be read as diagnostics, not rankings.")
+    return plotstyle.save(fig, PATHS.figures / "phase2_county_diagnostics.png", note)
+
+
+def plot_case_hazards(cfg: Config, artifacts: dict) -> tuple[Path, Path] | None:
+    """ERA5 fields on the two 2023 case days, available only after final test."""
+    if not artifacts["opened"]:
+        return None
+    import matplotlib.pyplot as plt
+    import xarray as xr
+
+    geometry = load_geometry(cfg)
+    if geometry is None:
+        return None
+    cases = []
+    for case in cfg.get("case_studies", []):
+        target = pd.Timestamp(case["date"])
+        path = PATHS.raw / "era5_monthly" / f"era5_{target:%Y%m}.nc"
+        if path.exists():
+            cases.append((case, target, path))
+    if not cases:
+        log.warning("no case-study ERA5 files found; skipping hazard maps")
+        return None
+
+    fields = [("i10fg", "10 m wind gust", "m s$^{-1}$", "max"),
+              ("tp", "Precipitation", "mm", "sum"),
+              ("t2m", "2 m temperature", "$^\\circ$C", "min")]
+    fig, axes = plt.subplots(len(cases), len(fields), figsize=(13.5, 4.4 * len(cases)),
+                             squeeze=False)
+    outline = geometry.to_crs("EPSG:4326")
+    bounds = outline.total_bounds
+    for row, (case, target, path) in enumerate(cases):
+        with xr.open_dataset(path) as source:
+            rename = {old: new for old, new in {
+                "valid_time": "time", "latitude": "lat", "longitude": "lon"
+            }.items() if old in source}
+            day = source.rename(rename).sortby("time").sel(time=str(target.date()))
+            for col, (variable, title, unit, aggregation) in enumerate(fields):
+                ax = axes[row, col]
+                if variable not in day:
+                    ax.set_axis_off()
+                    continue
+                field = (day[variable].max("time") if aggregation == "max" else
+                         day[variable].sum("time") if aggregation == "sum" else
+                         day[variable].min("time"))
+                values = field.values * 1000.0 if variable == "tp" else field.values
+                values = values - 273.15 if variable == "t2m" else values
+                mesh = ax.pcolormesh(field.lon, field.lat, values,
+                                     shading="nearest", cmap=plotstyle.sequential())
+                outline.boundary.plot(ax=ax, color=plotstyle.INK, linewidth=0.4,
+                                      alpha=0.6)
+                colorbar = fig.colorbar(mesh, ax=ax, shrink=0.76, pad=0.02)
+                colorbar.set_label(unit, fontsize=8)
+                ax.set(xlim=(bounds[0], bounds[2]), ylim=(bounds[1], bounds[3]))
+                plotstyle.map_axes(ax)
+                ax.set_title(f"{title} · daily {aggregation}", loc="left", fontsize=9.5)
+    fig.suptitle("ERA5 hazard fields on frozen-model GEFS case-study days",
+                 x=0.01, ha="left", fontsize=14, fontweight="semibold")
+    fig.tight_layout(rect=(0, 0.04, 1, 0.965))
+    for row, (case, target, _) in enumerate(cases):
+        top = axes[row, 0].get_position().y1
+        fig.text(0.01, min(top + 0.012, 0.965),
+                 f"{case['name']} · {target:%Y-%m-%d}", fontsize=9,
+                 fontweight="semibold", color=plotstyle.INK)
+    return plotstyle.save(
+        fig, PATHS.figures / "phase2_case_hazards.png",
+        "Native ERA5 grid cells; gust/temperature are daily extrema and precipitation "
+        "is daily accumulation. County outlines are shown for spatial context.")
 
 
 def plot_gefs_cases(cfg: Config, artifacts: dict,
@@ -348,7 +545,8 @@ def _markdown_table(matrix: pd.DataFrame, include_test: bool) -> list[str]:
 
 
 def write_results(cfg: Config, artifacts: dict, matrix: pd.DataFrame,
-                  cases: pd.DataFrame, figures: list[tuple[Path, Path] | None]) -> Path:
+                  cases: pd.DataFrame, counties: pd.DataFrame,
+                  figures: list[tuple[Path, Path] | None]) -> Path:
     include_test = artifacts["test_metrics"] is not None
     lines = [
         "# Phase 2 results",
@@ -371,6 +569,13 @@ def write_results(cfg: Config, artifacts: dict, matrix: pd.DataFrame,
         *_markdown_table(matrix, include_test),
         "",
     ]
+    if len(counties):
+        lines += ["## County diagnostic matrix", "",
+                  "`data/processed/phase2_county_skill.csv` contains county-level "
+                  "event rates, mean probabilities, probability bias, Brier skill, "
+                  "event counts, and magnitude CRPS for the evaluated split. These "
+                  "are diagnostics rather than county rankings, especially where "
+                  "events are sparse.", ""]
     if len(cases):
         lines += ["## GEFS case-study matrix", "",
                   "| Case | Lead | Median | 10–90% interval | Observed | Met. variance |",
@@ -408,13 +613,20 @@ def main() -> None:
     artifacts = load_artifacts(cfg)
     matrix = results_matrix(artifacts)
     cases = gefs_case_matrix(cfg, artifacts)
+    prediction, label = _scored_predictions(cfg, artifacts)
+    counties = (county_skill(prediction, [float(q) for q in cfg["quantiles"]])
+                if prediction is not None and not prediction.empty else pd.DataFrame())
     matrix.to_csv(MATRIX_PATH, index=False)
     cases.to_csv(CASE_MATRIX_PATH, index=False)
+    counties.to_csv(COUNTY_MATRIX_PATH, index=False)
     figures = [plot_skill_summary(cfg, artifacts),
+               plot_county_diagnostics(cfg, counties, label),
+               plot_case_hazards(cfg, artifacts),
                plot_gefs_cases(cfg, artifacts, cases)]
-    results = write_results(cfg, artifacts, matrix, cases, figures)
+    results = write_results(cfg, artifacts, matrix, cases, counties, figures)
     log.info("metric matrix -> %s", MATRIX_PATH)
     log.info("GEFS case matrix -> %s", CASE_MATRIX_PATH)
+    log.info("county diagnostic matrix -> %s", COUNTY_MATRIX_PATH)
     log.info("results summary -> %s", results)
 
 

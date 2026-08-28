@@ -11,6 +11,14 @@ ACCENT = "#12626F"
 REFERENCE = "#91A0AA"
 OBSERVED = "#A43A25"
 SEQUENCE = ["#D7E9EB", "#A8D0D5", "#6DABB4", "#347D89", "#124F5B"]
+MISSING = "#E4E9ED"
+REGIME_COLORS = {
+    "convective_wind": "#C05E17",
+    "synoptic_wind": "#31699F",
+    "ice": "#8A4FBE",
+    "wet_snow": "#94640F",
+    "benign": "#B7C1C9",
+}
 
 
 def apply() -> None:
@@ -48,6 +56,40 @@ def apply() -> None:
 
 def panel(ax, letter: str, title: str) -> None:
     ax.set_title(f"({letter})  {title}", loc="left")
+
+
+def sequential():
+    """Single-hue map ramp for magnitudes and frequencies."""
+    from matplotlib.colors import LinearSegmentedColormap
+
+    return LinearSegmentedColormap.from_list("storm_sequence", SEQUENCE)
+
+
+def diverging():
+    """Colour-vision-safe orange/blue ramp for quantities centred at zero."""
+    from matplotlib.colors import LinearSegmentedColormap
+
+    return LinearSegmentedColormap.from_list(
+        "storm_diverging", ["#8C4308", "#E0A86B", "#EFEFEC", "#8FB3CB", "#12405F"])
+
+
+def diverging_norm(values, center: float = 0.0):
+    """Symmetric robust scaling with zero pinned to the neutral colour."""
+    import numpy as np
+    from matplotlib.colors import TwoSlopeNorm
+
+    finite = np.asarray(values, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    if not len(finite):
+        return None
+    span = float(np.quantile(np.abs(finite - center), 0.98))
+    return (TwoSlopeNorm(vmin=center - span, vcenter=center, vmax=center + span)
+            if span > 0 else None)
+
+
+def map_axes(ax) -> None:
+    ax.set_axis_off()
+    ax.set_aspect("equal")
 
 
 def save(fig, png_path: Path, note: str = "") -> tuple[Path, Path]:

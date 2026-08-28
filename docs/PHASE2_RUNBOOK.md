@@ -172,7 +172,9 @@ figures/phase2_forecast_*.png
 figures/phase2_cost_loss_value.png
 data/processed/phase2_results_matrix.csv
 data/processed/phase2_gefs_case_matrix.csv
+data/processed/phase2_county_skill.csv
 figures/phase2_skill_summary.{png,pdf}
+figures/phase2_county_diagnostics.{png,pdf}
 figures/phase2_gefs_case_studies.{png,pdf}
 ```
 
@@ -243,7 +245,10 @@ validation, once-only test, and GEFS forecast artifacts and writes:
 docs/phase2_results.md
 data/processed/phase2_results_matrix.csv
 data/processed/phase2_gefs_case_matrix.csv
+data/processed/phase2_county_skill.csv
 figures/phase2_skill_summary.{png,pdf}
+figures/phase2_county_diagnostics.{png,pdf}
+figures/phase2_case_hazards.{png,pdf}
 figures/phase2_gefs_case_studies.{png,pdf}
 ```
 
@@ -252,6 +257,13 @@ probabilities as the validation metrics. The GEFS matrix reports p10, median,
 p90, observed customer-hours, interval coverage, absolute error, and the
 meteorological share of predictive variance by case and lead. PNG output is
 300 dpi and each figure also has a vector PDF for the manuscript.
+
+The county figure maps event rate, average probability, probability bias,
+Brier skill, event count, and magnitude CRPS. It is a diagnostic: sparse-event
+counties should not be interpreted as a performance ranking. Once the final
+test marker exists, the report also makes a two-case ERA5 hazard map for the
+2023 GEFS case-study days. Before the test opens, that map is deliberately
+omitted, so `make phase2-apply` remains sealed.
 
 ## Final test
 

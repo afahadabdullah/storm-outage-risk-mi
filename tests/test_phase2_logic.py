@@ -18,6 +18,7 @@ from src.phase2_forecast import (
     quantile_distance,
     quantile_map_cellwise,
 )
+from src.phase2_report import county_skill as report_county_skill
 from src.phase2_report import gefs_case_matrix, results_matrix
 from src.phase2_train import (
     _interp_log_quantiles,
@@ -95,6 +96,24 @@ def test_gefs_case_matrix_reports_frozen_case_interval(tmp_path):
     assert matrix.loc[0, "p90_customer_hours"] == pytest.approx(89.1)
     assert matrix.loc[0, "meteorological_variance_share"] == pytest.approx(0.64)
     assert matrix.loc[0, "input"] == "GEFS"
+
+
+def test_report_county_skill_preserves_evaluated_county_diagnostics():
+    prediction = pd.DataFrame({
+        "fips": ["26001"] * 3 + ["26003"] * 3,
+        "event": [0, 1, 1, 0, 0, 1],
+        "probability": [0.1, 0.7, 0.8, 0.2, 0.3, 0.6],
+        "reference_climatology_county": [0.4] * 6,
+        "customer_hours": [0, 100, 120, 0, 0, 80],
+        "magnitude_q05": [0, 50, 60, 0, 0, 40],
+        "magnitude_q50": [0, 100, 120, 0, 0, 80],
+        "magnitude_q95": [0, 150, 180, 0, 0, 120],
+    })
+    result = report_county_skill(prediction, [0.05, 0.50, 0.95])
+    assert result.fips.tolist() == ["26001", "26003"]
+    assert result.loc[0, "n_events"] == 2
+    assert result.loc[0, "probability_bias"] == pytest.approx(-0.1333333333)
+    assert {"brier_skill", "magnitude_crps", "observed_customer_hours"} <= set(result)
 
 
 def test_storm_blocking_keeps_nearby_days_in_one_group():
