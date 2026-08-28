@@ -150,18 +150,24 @@ require utility-specific asset, action-cost, and intervention-effectiveness
 data. The memo makes that distinction explicit for every dollar value.
 
 After each frozen run, `make phase2-techmemo` builds a concise, animated
-[technical memo](docs/phase2_technical_memo.html) from the same result matrices
-and figures used for reporting. It begins with the study split and abstract,
+[animated technical memo](docs/phase2_technical_memo.html) and a
+[GitHub-readable Markdown memo](docs/phase2_technical_memo.md) from the same
+result matrices and figures used for reporting. It begins with the study split and abstract,
 then presents reference-model skill, GEFS case-study verification, decision
 value, county diagnostics, and a short conclusion. Values are inserted from
 the generated artifacts rather than copied into this README, preventing a
 stale narrative when the final 2023 test replaces validation-only results.
 
+GitHub renders the Markdown memo and committed PNG figures directly. It does
+not execute JavaScript in repository HTML, so the animated HTML is intended
+for local/browser viewing; use the Markdown memo as the canonical link from
+GitHub.
+
 The accompanying [results matrix](docs/phase2_results.md) remains the
 publication record: it identifies whether 2023 is still sealed and lists every
 reported metric, GEFS lead, and uncertainty diagnostic. The technical memo is
-generated locally with its figures; commit the two files only when releasing a
-reviewed results package.
+generated locally with its figures; commit the Markdown memo and the reviewed
+`figures/phase2_*.png` files when releasing a GitHub-visible results package.
 
 ## Repository guide
 

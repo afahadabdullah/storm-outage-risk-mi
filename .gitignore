@@ -13,6 +13,7 @@ models/*
 !models/.gitkeep
 figures/*
 !figures/.gitkeep
+!figures/phase2_*.png
 logs/*
 !logs/.gitkeep
 

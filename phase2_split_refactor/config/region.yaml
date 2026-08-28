@@ -1,0 +1,114 @@
+# =============================================================================
+# region.yaml -- the ONLY file you edit to move this project to a new region.
+# Frozen after Day 2. See project spec section 2.
+# =============================================================================
+region_name:        "Michigan"
+state_fips:         ["26"]
+bbox:               [-90.5, 41.6, -82.3, 48.3]   # W, S, E, N (0.5 deg pad beyond border)
+crs_analysis:       "EPSG:5070"                  # CONUS Albers Equal Area -- ALL area math
+tz:                 "UTC"                        # single time reference, converted at ingest
+
+# ---- Temporal splits: fix before looking at data, never revisit --------------
+# Re-frozen once the full archive was available. Train is four calendar years;
+# validation is the complete 2022 cycle, so the isotonic calibrator and every
+# regime-stratified metric see a full ice season -- the regime the Feb 2023 case
+# study then asks the frozen model to forecast. A half-year validation window
+# would have calibrated on a period containing no January-June at all.
+train_start:        "2018-01-01"
+train_end:          "2021-12-31"
+val_start:          "2022-01-01"
+val_end:            "2022-12-31"
+test_start:         "2023-01-01"
+test_end:           "2023-12-31"
+
+# ---- Event definition --------------------------------------------------------
+event_frac_threshold:   0.005      # 0.5% of county customers without power
+event_min_duration_hr:  2
+event_merge_gap_hr:     6
+restoration_end_frac:   0.10       # restoration = decay to 10% of event peak
+baseline_method:        "rolling"  # rolling 30-day 10th pct (phase 1 overrides)
+baseline_window_days:   30
+baseline_quantile:      0.10
+
+# ---- Named holdout storms for the forecast case studies (test window only) ---
+case_studies:
+  - name: "Feb 2023 ice storm"
+    date: "2023-02-22"
+    type: "ice"
+  - name: "Aug 2023 wind event"
+    date: "2023-08-24"
+    type: "convective wind"
+
+regimes: ["convective_wind", "synoptic_wind", "ice", "wet_snow"]
+
+# Plausible event count for the WHOLE frozen study period, not a five-day
+# window. phase1.yaml overrides this with its own smoke-test estimate; without
+# a Phase 2 value here the [20, 60] default fired on every multi-year run and
+# trained you to ignore the warning.
+expected_event_count: [500, 20000]
+
+# ---- Hazard thresholds (m/s) for exceedance-hour features -------------------
+gust_thresholds_ms: [13, 18, 25]
+
+# ---- Data sources ------------------------------------------------------------
+sources:
+  eaglei_figshare_article: 24237376        # doi 10.6084/m9.figshare.24237376
+  # Declared archive coverage. `make doctor-phase2` checks that this contains
+  # the study period derived from the frozen splits, and phase2_download
+  # re-checks it against the LIVE figshare listing before downloading anything
+  # -- the config is a claim, the listing is the fact. The article was extended
+  # past 2022 after Phase 1; if a year below turns out not to exist upstream,
+  # the download aborts with the real available list instead of failing on file
+  # eight of nine.
+  eaglei_years_available:  [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021,
+                            2022, 2023, 2024, 2025]
+  tiger_year:              2023
+  tiger_url:               "https://www2.census.gov/geo/tiger/TIGER{year}/COUNTY/tl_{year}_us_county.zip"
+  nlcd_tcc_url:            "https://www.mrlc.gov/downloads/sciweb1/shared/mrlc/data/nlcd_tcc_conus_2021_v2021-4.zip"
+  nlcd_tcc_image_service:  "https://imagery.geoplatform.gov/iipp/rest/services/Vegetation/USFS_EDW_NLCD_TCC_CONUS/ImageServer"
+  era5_dataset:            "reanalysis-era5-single-levels"
+  cds_url:                 "https://cds.climate.copernicus.eu/api"
+  era5_arco_geo_url:       "https://arco.datastores.ecmwf.int/cadl-arco-geo-002/arco/reanalysis_era5_single_levels/sfc/geoChunked.zarr"
+  gefs_bucket:             "noaa-gefs-pds"
+  gefs_product:            "pgrb2sp25"           # 0.25 deg primary fields, includes GUST
+  # Permanent historical fallback for Phase 1 dates through 2019. The
+  # operational bucket above is intentionally only a short rolling archive.
+  gefs_reforecast_bucket:  "noaa-gefs-retrospective"
+
+era5_variables:
+  - "10m_u_component_of_wind"
+  - "10m_v_component_of_wind"
+  - "instantaneous_10m_wind_gust"
+  - "100m_u_component_of_wind"
+  - "100m_v_component_of_wind"
+  - "total_precipitation"
+  - "2m_temperature"
+  - "volumetric_soil_water_layer_1"
+  - "volumetric_soil_water_layer_2"
+  - "convective_available_potential_energy"
+  - "snowfall"
+  - "snow_depth"
+
+# ---- Model ------------------------------------------------------------------
+n_boost_rounds:     500
+n_mc_draws:         1000
+n_gefs_members:     31
+skip_isotonic:      false
+magnitude_model:    "ngboost"     # "ngboost" | "lgbm_quantile"
+quantiles:          [0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95]
+random_seed:        20260826
+
+# ---- Economics (ICE Calculator, section 9) ----------------------------------
+ice:
+  # $ per customer-hour interrupted, by class. REPLACE with ICE Calculator output
+  # for this region and customer mix before any number leaves the repo.
+  residential_usd_per_cust_hr:  4.0
+  commercial_usd_per_cust_hr:   180.0
+  mix_residential:              0.88
+  mix_commercial:               0.12
+  # Asset-count proxy for the break-even denominator. The weakest assumption in
+  # section 9.2 and the one to name first when asked. With real network data
+  # this is a pole and span count, not a ratio.
+  customers_per_asset:          12
+cost_loss_ratios:   [0.01, 0.02, 0.05, 0.10, 0.20, 0.35, 0.50]
+hazard_reduction_deltas: [0.10, 0.20, 0.30]

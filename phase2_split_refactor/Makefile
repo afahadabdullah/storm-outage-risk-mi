@@ -23,7 +23,7 @@ SRC      = src
         phase2-download-canopy phase2-build \
         phase2-train phase2 phase2-build-test phase2-test phase2-backtest-2021 phase2-submit \
         phase2-compose phase2-forecast phase2-forecast-synthetic phase2-value \
-        phase2-apply phase2-preflight phase2-report phase2-techmemo
+        phase2-apply phase2-preflight phase2-report
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -142,14 +142,10 @@ phase2-forecast-synthetic: ## same plumbing on stand-in members; NO skill implie
 phase2-value: ## section 9: cost-loss value, break-even inspection cost, EVPI
 	$(PY) src/phase2_value.py --config $(CFG) --phase2 $(P2)
 
-phase2-report: ## result matrices + publication PNG/PDF figures
+phase2-apply: phase2-compose phase2-forecast phase2-value ## all three application stages
+
+phase2-report: ## headline metric matrix + the five publication figures
 	$(PY) src/phase2_report.py --config $(CFG) --phase2 $(P2)
-
-phase2-techmemo: phase2-report ## short animated HTML technical memo from frozen artifacts
-	$(PY) src/phase2_techmemo.py --config $(CFG) --phase2 $(P2)
-	$(PY) src/phase2_techmemo_md.py --config $(CFG) --phase2 $(P2)
-
-phase2-apply: phase2-compose phase2-forecast phase2-value phase2-techmemo ## application + report
 
 phase2-preflight: ## everything that must be green before submitting anything
 	$(MAKE) doctor-phase2
@@ -162,10 +158,14 @@ phase2-build-test: ## explicitly open/build the held-out test year
 phase2-test: ## score frozen model on the test year exactly once
 	$(PY) src/phase2_train.py --config $(CFG) --phase2 $(P2) --evaluate-test
 
-phase2-backtest-2021: ## SUPERSEDED: 2021 is now training data, not an OOS backtest
-	@echo "2021 is inside the frozen 2018-01-01..2022-06-30 training window."
-	@echo "Use phase2_cv_metrics.csv for forward-year temporal checks."
-	@exit 2
+# Retained but no longer runnable: under the re-frozen split (train 2018-2021,
+# validate 2022, test 2023) there is no gap year between validation and the
+# sealed test, so 2021 is training data and a 2021 score is not out of sample.
+# The script refuses with that explanation. Forward-year CV in phase2-train is
+# where temporal generalisation is evidenced now.
+phase2-backtest-2021: ## SUPERSEDED: no gap year exists under the current split
+	$(PY) src/phase2_build.py --config $(CFG) --phase2 $(P2) --through backtest --backtest-year 2021
+	$(PY) src/phase2_backtest.py --config $(CFG) --phase2 $(P2) --year 2021
 
 phase2-submit: ## sequential Slurm pipeline; each stage is watched and must succeed
 	bash slurm/submit_phase2.sh

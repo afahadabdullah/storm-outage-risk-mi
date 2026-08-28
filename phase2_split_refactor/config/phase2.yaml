@@ -1,0 +1,28 @@
+# Full-study settings.  Region choices and frozen temporal splits remain in
+# region.yaml; this file contains only execution controls.
+phase: 2
+# ECMWF geo-chunked ARCO supplies 7/12 fields through one 2018-2023 Michigan
+# slice; the monthly array merges the 5 residual CDS fields into the same
+# NetCDF contract consumed by the feature builder. Set to "cds" for fallback.
+era5_backend: arco
+baseline_method: rolling
+n_boost_rounds: 500
+n_mc_draws: 1000
+n_gefs_members: 31
+skip_isotonic: false
+magnitude_model: ngboost
+forecast_lead_days: [5, 3, 2, 1]
+forecast_parametric_draws: 100
+storm_gap_days: 2
+cv_n_estimators: 200
+cv_leave_one_county_out: true
+# A storm day is one where at least this share of reporting counties is in
+# event. Defining it as "any county anywhere" saturates at 83 counties and
+# fuses the whole record into a single CV group -- see storm_groups().
+storm_min_county_frac: 0.10
+# Isotonic calibration is fitted on the 2022 validation year. Scoring it on the same
+# rows flatters it, so the reported validation metrics come from out-of-fold
+# calibrated probabilities using this many folds within the validation period.
+calibration_cv_folds: 5
+# Reference models the spec requires as skill floors (sections 6.1, 6.2).
+fit_reference_models: true
