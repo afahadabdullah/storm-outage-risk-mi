@@ -123,6 +123,46 @@ loss. These are potential avoided impacts, not observed savings. February's
 ice-storm rows are omitted because no counties crossed the trigger and the
 potential avoided proxy was zero.
 
+| Forecast lead | Counties triggered | Observed loss covered | Potential avoided customer-hours | Potential avoided cost proxy |
+|---|---:|---:|---:|---:|
+| −5 days | 52/80 | 99% | 5,057 | **$127,032** |
+| −3 days | 45/80 | 95% | 4,874 | **$122,435** |
+| −2 days | 50/80 | 99% | 5,057 | **$127,032** |
+| −1 day | 40/80 | 73% | 3,753 | **$94,270** |
+
+### How the loss-prevention estimate is constructed
+
+The estimate follows this chain:
+
+1. **Forecast risk by county:** At each GEFS lead, the model produces an outage
+   probability `p_i` and a conditional customer-hour distribution for county
+   `i`.
+2. **Trigger an action:** A county is flagged when calibrated probability exceeds
+   the selected cost–loss threshold, `p_i >= C/L = 0.10`. At a −5-day lead,
+   52 of 80 counties crossed that threshold.
+3. **Define the action package:** Depending on lead time, a utility could
+   pre-position crews and materials, request mutual aid, inspect vulnerable
+   circuits, clear vegetation, prepare switching plans, and communicate with
+   customers.
+4. **Measure loss covered:** After the event, the trigger mask is compared with
+   observed outages. At −5 days, total observed loss was 25,577 customer-hours;
+   triggered counties contained 25,285 customer-hours, or 99% of the event loss.
+5. **Apply a mitigation assumption:** Because intervention records are not
+   available, the memo assumes actions reduce realized consequence by 20%:
+
+   `potential avoided customer-hours = covered observed loss × 0.20`
+
+   `25,285 × 0.20 = 5,057 customer-hours`
+6. **Convert to the cost proxy:**
+
+   `5,057 × USD 25.12/customer-hour = approximately USD 127,032`
+
+Thus, the −5-day forecast could have supported actions covering nearly all
+observed outage loss, with a modeled potential reduction of about 5,057
+customer-hours or $127,032. These are counterfactual potential benefits, not
+measured savings; actual net benefit requires utility-specific action costs and
+intervention outcomes.
+
 ![August 2023 wind-event forecast-triggered action by lead: observed loss coverage and potential avoided interruption-cost proxy.](figures/phase2_forecast_triggered_impact_by_lead.png)
 
 ## Scientific scope and methods
