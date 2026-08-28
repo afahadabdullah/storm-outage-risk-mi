@@ -33,7 +33,7 @@ DECISION_PATH = PATHS.processed / "phase2_decision_summary.json"
 TEST_PREDICTION_PATH = PATHS.processed / "phase2_test_predictions.parquet"
 FORECAST_PROB_PATH = PATHS.processed / "phase2_forecast_county_probs.parquet"
 
-AUTHOR = "Afahad Abdullah"
+AUTHOR = "Abdullah Al Fahad"
 INSTITUTION = "NASA Goddard Space Flight Center"
 
 FIGURES = [

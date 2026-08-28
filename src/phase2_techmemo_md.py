@@ -39,7 +39,7 @@ def render_markdown(payload: dict) -> str:
               else "2023 test sealed — validation-only")
     lines = [
         "# Storm-driven outage risk and forecast value in Michigan", "",
-        f"**Afahad Abdullah · NASA Goddard Space Flight Center**", "",
+        f"**Abdullah Al Fahad · NASA Goddard Space Flight Center**", "",
         f"*{status}*", "",
         "## Abstract", "", payload["abstract"], "",
         "## Study design", "",

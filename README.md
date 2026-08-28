@@ -1,11 +1,19 @@
 # Storm-driven outage risk and forecast value — Michigan
 
-**Afahad Abdullah · NASA Goddard Space Flight Center**
+**Abdullah Al Fahad · NASA Goddard Space Flight Center**
 
 This repository develops a probabilistic county-day model of weather-conditioned
 electricity-distribution outage consequence and the operational value of
 ensemble forecasts. It estimates outage occurrence, customer-hours, and
 restoration duration; it is not an asset-fragility or physical damage model.
+
+## Workflow overview
+
+![Storm-driven outage risk workflow: ERA5, EAGLE-I, NLCD, and GEFS inputs are aggregated to county-day features; a three-part probabilistic model produces county risk and decision-value inputs.](docs/assets/project-workflow.png)
+
+This workflow figure is a methods schematic. Its maps, curves, density shapes,
+and annotated medians illustrate the analysis design; the empirical results are
+the metric tables and generated figures below.
 
 ## Final 2023 results
 

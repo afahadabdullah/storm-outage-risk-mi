@@ -551,6 +551,8 @@ def write_results(cfg: Config, artifacts: dict, matrix: pd.DataFrame,
     lines = [
         "# Phase 2 results",
         "",
+        "**Abdullah Al Fahad · NASA Goddard Space Flight Center**",
+        "",
         "Generated from frozen run artifacts by `make phase2-report`.",
         "",
         "## Study split",

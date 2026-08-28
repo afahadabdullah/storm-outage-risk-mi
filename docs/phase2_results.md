@@ -1,6 +1,6 @@
 # Phase 2 results — Michigan
 
-**Afahad Abdullah · NASA Goddard Space Flight Center**
+**Abdullah Al Fahad · NASA Goddard Space Flight Center**
 
 This reviewed result record reports the frozen model after the one-time 2023
 test. Training used 2018-01-01 through 2022-06-30; calibration/validation used

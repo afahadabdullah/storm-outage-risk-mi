@@ -1,6 +1,6 @@
 # Storm-driven outage risk and forecast value in Michigan
 
-**Afahad Abdullah · NASA Goddard Space Flight Center**
+**Abdullah Al Fahad · NASA Goddard Space Flight Center**
 
 *Final 2023 test scored once*
 
@@ -72,10 +72,6 @@ Forecast-triggered actions use the configured C/L threshold closest to 0.10.
 | Aug 2023 wind event | day −2 | 50/80 | 99% | $127,032 |
 | Aug 2023 wind event | day −3 | 45/80 | 95% | $122,435 |
 | Aug 2023 wind event | day −5 | 52/80 | 99% | $127,032 |
-| Feb 2023 ice storm | day −1 | 0/80 | 0% | $0 |
-| Feb 2023 ice storm | day −2 | 0/80 | 0% | $0 |
-| Feb 2023 ice storm | day −3 | 0/80 | 0% | $0 |
-| Feb 2023 ice storm | day −5 | 0/80 | 0% | $0 |
 
 ## Publication figures
 
