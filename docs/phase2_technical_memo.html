@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 2 technical memo — Michigan storm outage risk</title>
+<style>
+:root { --ink:#17232d; --muted:#5d6b76; --line:#dce4e8; --teal:#12626f; --blue:#31699f; --orange:#c05e17; --red:#a43a25; --paper:#fff; }
+* { box-sizing:border-box; }
+body { margin:0; background:#f3f6f7; color:var(--ink); font:16px/1.58 Arial, Helvetica, sans-serif; }
+main { width:min(1040px, calc(100% - 32px)); margin:0 auto 48px; }
+header { padding:58px 0 32px; border-bottom:4px solid var(--teal); }
+h1 { font-size:clamp(2rem, 5vw, 3.65rem); letter-spacing:-.035em; line-height:1.04; margin:0 0 15px; max-width:880px; }
+h2 { font-size:1.42rem; margin:0 0 12px; letter-spacing:-.015em; }
+h3 { font-size:1rem; margin:0; }
+p { margin:0 0 13px; }
+.eyebrow { color:var(--teal); text-transform:uppercase; letter-spacing:.12em; font-size:.75rem; font-weight:700; }
+.byline { color:var(--muted); font-size:.96rem; }
+.status { display:inline-block; margin-top:10px; border:1px solid var(--line); padding:5px 9px; color:var(--muted); font-size:.82rem; }
+section { margin-top:24px; padding:25px 28px; background:var(--paper); border:1px solid var(--line); opacity:0; transform:translateY(18px); transition:opacity .55s ease, transform .55s ease; }
+section.in { opacity:1; transform:none; }
+.split { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border:1px solid var(--line); margin-top:17px; }
+.split div { background:var(--paper); padding:13px; }
+.split strong { display:block; font-size:.76rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+.split span { display:block; margin-top:4px; font-size:.91rem; }
+.impact-grid,.operation-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
+.impact,.operation { border:1px solid var(--line); padding:14px; background:#fff; }
+.impact strong { display:block; font-size:1.48rem; line-height:1.15; color:var(--teal); margin:4px 0; }
+.impact span,.operation span { color:var(--muted); font-size:.83rem; }
+.operation h3 { margin-bottom:5px; }
+.chart { overflow-x:auto; }
+svg { display:block; width:100%; min-width:620px; height:auto; }
+.figure-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+figure { margin:0; border:1px solid var(--line); background:#fff; }
+figure img { width:100%; display:block; }
+figcaption { padding:9px 11px; font-size:.84rem; color:var(--muted); }
+table { border-collapse:collapse; width:100%; font-size:.87rem; }
+th, td { padding:8px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+th:first-child, td:first-child { text-align:left; white-space:normal; }
+th { color:var(--muted); font-size:.76rem; text-transform:uppercase; letter-spacing:.04em; }
+.scroll { overflow-x:auto; }
+.note { color:var(--muted); font-size:.88rem; }
+.conclusion { border-left:5px solid var(--teal); }
+footer { color:var(--muted); font-size:.78rem; padding:22px 4px; }
+@keyframes grow { from { transform:scaleY(.03); } to { transform:scaleY(1); } }
+.bar { transform-box:fill-box; transform-origin:bottom; animation:grow .8s cubic-bezier(.2,.8,.2,1) both; }
+@media (max-width:680px) { main { width:min(100% - 20px, 1040px); } header { padding-top:36px; } section { padding:20px 16px; } .split,.figure-grid,.impact-grid,.operation-grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Technical memo · frozen Phase 2 results</div>
+    <h1>Storm-driven outage risk and forecast value in Michigan</h1>
+    <div id="byline" class="byline"></div>
+    <div id="status" class="status"></div>
+  </header>
+  <section class="in">
+    <div class="eyebrow">Abstract</div>
+    <p id="abstract"></p>
+  </section>
+  <section>
+    <div class="eyebrow">Design</div>
+    <h2>Temporal separation keeps the final test honest</h2>
+    <div class="split" id="split"></div>
+    <p class="note" style="margin-top:15px">The occurrence, conditional magnitude, and restoration models are composed probabilistically. GEFS drives two case studies after the model is frozen.</p>
+  </section>
+  <section>
+    <div class="eyebrow">Results</div>
+    <h2>Occurrence skill against required reference models</h2>
+    <div class="chart" id="brier-chart" aria-label="Brier score comparison chart"></div>
+    <p class="note">Lower Brier score is better. Bar heights animate on load; labels are the stored frozen-run values.</p>
+  </section>
+  <section id="case-section">
+    <div class="eyebrow">Forecast case studies</div>
+    <h2>GEFS distributions remain separate from the annual test</h2>
+    <div id="case-table" class="scroll"></div>
+    <p class="note">The case-study forecasts use GEFS ensemble members and conditional model draws. Observations appear only after the held-out 2023 test is opened.</p>
+  </section>
+  <section id="value-section">
+    <div class="eyebrow">Decision value</div>
+    <h2>Value varies with the cost-loss setting</h2>
+    <div class="chart" id="value-chart" aria-label="Relative economic value chart"></div>
+    <p id="decision-note" class="note"></p>
+  </section>
+  <section id="economic-section">
+    <div class="eyebrow">2023 interruption-cost scenarios</div>
+    <h2>Translate customer-hours into action-relevant impact</h2>
+    <div id="impact-cards" class="impact-grid"></div>
+    <div class="chart" id="action-chart" aria-label="Forecast-triggered potential avoided interruption cost chart"></div>
+    <div id="action-table" class="scroll"></div>
+    <p class="note">This is an interruption-cost proxy, not measured infrastructure damage. Potential avoided cost assumes a forecast-triggered action reduces realized interruption consequence by the configured effectiveness; it does not claim those savings were observed.</p>
+  </section>
+  <section>
+    <div class="eyebrow">Industry-style risk operations</div>
+    <h2>Use probabilities to target preparation before the event</h2>
+    <div class="operation-grid">
+      <div class="operation"><h3>1. Forecast risk</h3><span>GEFS members feed calibrated county-day outage probabilities and customer-hour distributions at each lead.</span></div>
+      <div class="operation"><h3>2. Trigger actions</h3><span>Act where probability exceeds the selected cost-loss threshold; stage crews, materials, inspections, or mutual assistance according to local authority.</span></div>
+      <div class="operation"><h3>3. Audit value</h3><span>Compare triggered coverage, realized customer-hours, action cost, and assumed effectiveness after each event to revise the decision rule.</span></div>
+    </div>
+  </section>
+  <section id="figure-section">
+    <div class="eyebrow">Figures</div>
+    <h2>Publication diagnostics</h2>
+    <div id="figures" class="figure-grid"></div>
+  </section>
+  <section class="conclusion">
+    <div class="eyebrow">Conclusion</div>
+    <h2>Use the model as calibrated decision support, not a county ranking</h2>
+    <p id="conclusion"></p>
+  </section>
+  <footer>Generated from frozen Phase 2 artifacts. The full metric matrix and methods record are in <code>docs/phase2_results.md</code> and <code>docs/PHASE2_RUNBOOK.md</code>.</footer>
+</main>
+<script>
+const data = {"region": "Michigan", "split": {"train": "2018-01-01 to 2022-06-30", "validation": "2022-07-01 to 2022-12-31", "test": "2023-01-01 to 2023-12-31", "has_test": true, "scope": "the full held-out 2023 test"}, "abstract": "This short memo reports the frozen Michigan county-day outage-risk model on the full held-out 2023 test. Occurrence Brier score was 0.0795 and average precision was 0.277. Brier skill relative to county climatology was +0.075. All 2023 values were produced after the model and calibrator were frozen.", "primary_split": "test", "metrics": [{"key": "occurrence_brier", "metric": "Occurrence Brier score", "better": "lower", "validation": 0.0926337083, "validation_formatted": "0.0926", "test": 0.0794578575, "test_formatted": "0.0795"}, {"key": "occurrence_brier_skill_vs_climatology", "metric": "Brier skill vs county climatology", "better": "higher", "validation": 0.1009964684, "validation_formatted": "+0.101", "test": 0.0751533027, "test_formatted": "+0.075"}, {"key": "occurrence_average_precision", "metric": "Average precision", "better": "higher", "validation": 0.339058728, "validation_formatted": "0.339", "test": 0.2772446645, "test_formatted": "0.277"}, {"key": "occurrence_roc_auc", "metric": "ROC AUC", "better": "higher", "validation": 0.7532419651, "validation_formatted": "0.753", "test": 0.7464920472, "test_formatted": "0.746"}, {"key": "occurrence_log_loss", "metric": "Occurrence log loss", "better": "lower", "validation": 0.3195773358, "validation_formatted": "0.3196", "test": 0.2837630215, "test_formatted": "0.2838"}, {"key": "reference_logistic_glm_brier", "metric": "Logistic GLM Brier", "better": "lower", "validation": 0.0998659353, "validation_formatted": "0.0999", "test": 0.0839824387, "test_formatted": "0.0840"}, {"key": "threshold_gust20_brier", "metric": "Gust > 20 m/s rule Brier", "better": "lower", "validation": 0.1418478261, "validation_formatted": "0.1418", "test": 0.1117808219, "test_formatted": "0.1118"}, {"key": "occurrence_brier_ref_county_climatology", "metric": "County climatology Brier", "better": "lower", "validation": 0.1030404275, "validation_formatted": "0.1030", "test": 0.0859146253, "test_formatted": "0.0859"}, {"key": "magnitude_crps", "metric": "Magnitude CRPS (customer-hours)", "better": "lower", "validation": 16011.0520291209, "validation_formatted": "16,011", "test": 39163.8298075131, "test_formatted": "39,164"}, {"key": "magnitude_crps_skill_vs_climatology", "metric": "Magnitude CRPS skill vs climatology", "better": "higher", "validation": 0.0826958108, "validation_formatted": "+0.083", "test": 0.0838080759, "test_formatted": "+0.084"}, {"key": "magnitude_log_score", "metric": "Magnitude log score", "better": "lower", "validation": 9.2422579997, "validation_formatted": "9.242", "test": 9.0032016412, "test_formatted": "9.003"}, {"key": "magnitude_median_rmse", "metric": "Magnitude median RMSE", "better": "lower", "validation": 146422.487940375, "validation_formatted": "146,422", "test": 501574.8200657691, "test_formatted": "501,575"}, {"key": "duration_concordance", "metric": "Restoration concordance", "better": "higher", "validation": 0.6629225544, "validation_formatted": "0.663", "test": 0.6188260305, "test_formatted": "0.619"}, {"key": "duration_median_mae", "metric": "Restoration median MAE (hours)", "better": "lower", "validation": 4.4214128152, "validation_formatted": "4.42", "test": 5.2209136472, "test_formatted": "5.22"}, {"key": "duration_persistence_mae", "metric": "County persistence MAE (hours)", "better": "lower", "validation": 4.565375982, "validation_formatted": "4.57", "test": 4.1960544693, "test_formatted": "4.20"}], "cases": [{"case": "Aug 2023 wind event", "lead_days": 5, "median_customer_hours": 53113.2669865314, "p10_customer_hours": 13677.00674446, "p90_customer_hours": 364015.6070818823, "observed_customer_hours": 25577.0, "meteorological_variance_share": 0.0957895408, "input": "GEFS"}, {"case": "Aug 2023 wind event", "lead_days": 3, "median_customer_hours": 52980.5124398546, "p10_customer_hours": 14710.0502698602, "p90_customer_hours": 179217.7537376996, "observed_customer_hours": 25577.0, "meteorological_variance_share": 0.1111881395, "input": "GEFS"}, {"case": "Aug 2023 wind event", "lead_days": 2, "median_customer_hours": 76128.9410328713, "p10_customer_hours": 18787.2708538917, "p90_customer_hours": 433563.1799513799, "observed_customer_hours": 25577.0, "meteorological_variance_share": 0.2675309208, "input": "GEFS"}, {"case": "Aug 2023 wind event", "lead_days": 1, "median_customer_hours": 54824.0895364801, "p10_customer_hours": 14709.8677219906, "p90_customer_hours": 223481.96934492, "observed_customer_hours": 25577.0, "meteorological_variance_share": 0.3599195486, "input": "GEFS"}, {"case": "Feb 2023 ice storm", "lead_days": 5, "median_customer_hours": 2454.0277878838, "p10_customer_hours": 0.0, "p90_customer_hours": 15818.4717071004, "observed_customer_hours": 38402.0, "meteorological_variance_share": 0.1154531674, "input": "GEFS"}, {"case": "Feb 2023 ice storm", "lead_days": 3, "median_customer_hours": 4271.6398791163, "p10_customer_hours": 0.0, "p90_customer_hours": 20889.5133789978, "observed_customer_hours": 38402.0, "meteorological_variance_share": 0.1807478752, "input": "GEFS"}, {"case": "Feb 2023 ice storm", "lead_days": 2, "median_customer_hours": 3184.459796622, "p10_customer_hours": 0.0, "p90_customer_hours": 14659.5349913802, "observed_customer_hours": 38402.0, "meteorological_variance_share": 0.0904523747, "input": "GEFS"}, {"case": "Feb 2023 ice storm", "lead_days": 1, "median_customer_hours": 3461.9518539055, "p10_customer_hours": 0.0, "p90_customer_hours": 16145.5207588237, "observed_customer_hours": 38402.0, "meteorological_variance_share": 0.0672804647, "input": "GEFS"}], "cost_loss": [{"lead_days": 0, "source": "hindcast_validation_year", "cost_loss_ratio": 0.01, "relative_economic_value": -0.0017779839, "n_county_days": 14720}, {"lead_days": 0, "source": "hindcast_validation_year", "cost_loss_ratio": 0.02, "relative_economic_value": -0.0046382189, "n_county_days": 14720}, {"lead_days": 0, "source": "hindcast_validation_year", "cost_loss_ratio": 0.05, "relative_economic_value": 0.0595238095, "n_county_days": 14720}, {"lead_days": 0, "source": "hindcast_validation_year", "cost_loss_ratio": 0.1, "relative_economic_value": 0.3053494125, "n_county_days": 14720}, {"lead_days": 0, "source": "hindcast_validation_year", "cost_loss_ratio": 0.2, "relative_economic_value": 0.2558856502, "n_county_days": 14720}, {"lead_days": 0, "source": "hindcast_validation_year", "cost_loss_ratio": 0.35, "relative_economic_value": 0.1237495688, "n_county_days": 14720}, {"lead_days": 0, "source": "hindcast_validation_year", "cost_loss_ratio": 0.5, "relative_economic_value": 0.0184977578, "n_county_days": 14720}], "decision": {"ice_usd_per_customer_hour": 25.119999999999997, "ice_values_are_region_yaml_placeholders": true, "hazard_reduction_deltas": [0.1, 0.2, 0.3], "headline_delta": 0.2, "max_cost_per_asset_usd": 6994.425065731814, "top_decile_share_of_avoidable_customer_hours": 0.07409536838531494, "evpi_usd": 385653624.38400006, "cost_loss_positive_value_range": "0.05-0.50", "n_counties": 80}, "economics": {"usd_per_customer_hour": 25.12, "hazard_reduction_delta": 0.2, "annual_observed_customer_hours": 126927110.1, "annual_interruption_cost_proxy_usd": 3188409005.712, "case_impacts": [{"case": "Aug 2023 wind event", "observed_customer_hours": 25577.0, "interruption_cost_proxy_usd": 642494.24, "avoided_customer_hours_10pct": 2557.7000000000003, "avoided_customer_hours_20pct": 5115.400000000001, "avoided_customer_hours_30pct": 7673.099999999999, "avoided_cost_proxy_usd_10pct": 64249.424000000006, "avoided_cost_proxy_usd_20pct": 128498.84800000001, "avoided_cost_proxy_usd_30pct": 192748.272}, {"case": "Feb 2023 ice storm", "observed_customer_hours": 38402.0, "interruption_cost_proxy_usd": 964658.24, "avoided_customer_hours_10pct": 3840.2000000000003, "avoided_customer_hours_20pct": 7680.400000000001, "avoided_customer_hours_30pct": 11520.6, "avoided_cost_proxy_usd_10pct": 96465.82400000001, "avoided_cost_proxy_usd_20pct": 192931.64800000002, "avoided_cost_proxy_usd_30pct": 289397.472}], "triggered_actions": [{"case": "Aug 2023 wind event", "lead_days": 1, "cost_loss_threshold": 0.1, "triggered_counties": 40, "reporting_counties": 80, "observed_customer_hours": 25577.0, "triggered_customer_hours": 18764.0, "covered_observed_loss_share": 0.7336278687883645, "potential_avoided_customer_hours": 3752.8, "potential_avoided_cost_proxy_usd": 94270.33600000001}, {"case": "Aug 2023 wind event", "lead_days": 2, "cost_loss_threshold": 0.1, "triggered_counties": 50, "reporting_counties": 80, "observed_customer_hours": 25577.0, "triggered_customer_hours": 25285.0, "covered_observed_loss_share": 0.988583492981976, "potential_avoided_customer_hours": 5057.0, "potential_avoided_cost_proxy_usd": 127031.84000000001}, {"case": "Aug 2023 wind event", "lead_days": 3, "cost_loss_threshold": 0.1, "triggered_counties": 45, "reporting_counties": 80, "observed_customer_hours": 25577.0, "triggered_customer_hours": 24370.0, "covered_observed_loss_share": 0.9528091644837159, "potential_avoided_customer_hours": 4874.0, "potential_avoided_cost_proxy_usd": 122434.88}, {"case": "Aug 2023 wind event", "lead_days": 5, "cost_loss_threshold": 0.1, "triggered_counties": 52, "reporting_counties": 80, "observed_customer_hours": 25577.0, "triggered_customer_hours": 25285.0, "covered_observed_loss_share": 0.988583492981976, "potential_avoided_customer_hours": 5057.0, "potential_avoided_cost_proxy_usd": 127031.84000000001}, {"case": "Feb 2023 ice storm", "lead_days": 1, "cost_loss_threshold": 0.1, "triggered_counties": 0, "reporting_counties": 80, "observed_customer_hours": 38402.0, "triggered_customer_hours": 0.0, "covered_observed_loss_share": 0.0, "potential_avoided_customer_hours": 0.0, "potential_avoided_cost_proxy_usd": 0.0}, {"case": "Feb 2023 ice storm", "lead_days": 2, "cost_loss_threshold": 0.1, "triggered_counties": 0, "reporting_counties": 80, "observed_customer_hours": 38402.0, "triggered_customer_hours": 0.0, "covered_observed_loss_share": 0.0, "potential_avoided_customer_hours": 0.0, "potential_avoided_cost_proxy_usd": 0.0}, {"case": "Feb 2023 ice storm", "lead_days": 3, "cost_loss_threshold": 0.1, "triggered_counties": 0, "reporting_counties": 80, "observed_customer_hours": 38402.0, "triggered_customer_hours": 0.0, "covered_observed_loss_share": 0.0, "potential_avoided_customer_hours": 0.0, "potential_avoided_cost_proxy_usd": 0.0}, {"case": "Feb 2023 ice storm", "lead_days": 5, "cost_loss_threshold": 0.1, "triggered_counties": 0, "reporting_counties": 80, "observed_customer_hours": 38402.0, "triggered_customer_hours": 0.0, "covered_observed_loss_share": 0.0, "potential_avoided_customer_hours": 0.0, "potential_avoided_cost_proxy_usd": 0.0}]}, "figures": [{"src": "../figures/phase2_skill_summary.png", "caption": "Model skill, calibration, and cross-validation"}, {"src": "../figures/phase2_county_diagnostics.png", "caption": "County-level diagnostic maps"}, {"src": "../figures/phase2_gefs_case_studies.png", "caption": "GEFS case-study forecast distributions"}, {"src": "../figures/phase2_case_hazards.png", "caption": "ERA5 hazard fields on the two case-study days"}, {"src": "../figures/phase2_cost_loss_value.png", "caption": "Relative economic value by cost-loss ratio"}], "author": "Afahad Abdullah", "institution": "NASA Goddard Space Flight Center"};
+const finite = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+const fmt = (value, digits=3) => finite(value) ? Number(value).toFixed(digits) : "—";
+const comma = value => finite(value) ? Math.round(Number(value)).toLocaleString() : "—";
+document.querySelector("#status").textContent = "Final 2023 test scored once";
+document.querySelector("#byline").textContent = `${data.author} · ${data.institution}`;
+document.querySelector("#abstract").textContent = data.abstract;
+document.querySelector("#split").innerHTML = [["Training", data.split.train], ["Calibration / validation", data.split.validation], ["Held-out test", data.split.test]].map(([name, range]) => `<div><strong>${name}</strong><span>${range}</span></div>`).join("");
+
+const metric = key => data.metrics.find(row => row.key === key) || {};
+const split = data.primary_split;
+const brier = [
+  ["Frozen model", metric("occurrence_brier")[split], "#12626f"],
+  ["Logistic GLM", metric("reference_logistic_glm_brier")[split], "#91a0aa"],
+  ["Gust > 20 m/s", metric("threshold_gust20_brier")[split], "#91a0aa"],
+  ["County climatology", metric("occurrence_brier_ref_county_climatology")[split], "#91a0aa"],
+].filter(row => finite(row[1]));
+function brierChart() {
+  const host = document.querySelector("#brier-chart");
+  if (!brier.length) { host.textContent = "Metric matrix unavailable."; return; }
+  const width=720, height=280, left=166, right=58, top=28, bottom=38, max=Math.max(...brier.map(d => +d[1])) * 1.15;
+  const scale = value => left + (+value / max) * (width-left-right);
+  const rows = brier.map((d, i) => { const y=top+i*52; return `<text x="${left-12}" y="${y+19}" text-anchor="end" fill="#5d6b76" font-size="13">${d[0]}</text><rect class="bar" x="${left}" y="${y}" width="${Math.max(1, scale(d[1])-left)}" height="28" fill="${d[2]}" style="animation-delay:${i*.12}s"/><text x="${Math.min(width-right,scale(d[1])+8)}" y="${y+19}" fill="#17232d" font-size="13">${fmt(d[1],4)}</text>`; }).join("");
+  host.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img"><text x="${left}" y="${height-8}" fill="#5d6b76" font-size="12">Occurrence Brier score — lower is better</text><line x1="${left}" x2="${width-right}" y1="${height-bottom}" y2="${height-bottom}" stroke="#dce4e8"/>${rows}</svg>`;
+}
+brierChart();
+
+function caseTable() {
+  const host = document.querySelector("#case-table");
+  if (!data.cases.length) { document.querySelector("#case-section").style.display="none"; return; }
+  const rows = data.cases.map(row => `<tr><td>${row.case}</td><td>day −${row.lead_days}</td><td>${comma(row.median_customer_hours)}</td><td>${comma(row.p10_customer_hours)}–${comma(row.p90_customer_hours)}</td><td>${comma(row.observed_customer_hours)}</td><td>${finite(row.meteorological_variance_share) ? (100*row.meteorological_variance_share).toFixed(0)+"%" : "—"}</td></tr>`).join("");
+  host.innerHTML = `<table><thead><tr><th>Case</th><th>Lead</th><th>Median customer-hours</th><th>10–90% interval</th><th>Observed</th><th>Meteorological variance</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+caseTable();
+
+function valueChart() {
+  const host=document.querySelector("#value-chart");
+  const values=data.cost_loss.filter(row => row.lead_days === 0 && finite(row.relative_economic_value)).sort((a,b) => a.cost_loss_ratio-b.cost_loss_ratio);
+  if (!values.length) { document.querySelector("#value-section").style.display="none"; return; }
+  const width=720, height=285, left=66, right=28, top=24, bottom=48;
+  const xs=values.map(d=>+d.cost_loss_ratio), ys=values.map(d=>+d.relative_economic_value);
+  const x=v=>left+(v-Math.min(...xs))/(Math.max(...xs)-Math.min(...xs)||1)*(width-left-right);
+  const low=Math.min(0,...ys), high=Math.max(0,...ys), span=high-low||1;
+  const y=v=>top+(high-v)/span*(height-top-bottom);
+  const path=values.map((d,i)=>`${i?"L":"M"}${x(+d.cost_loss_ratio).toFixed(1)},${y(+d.relative_economic_value).toFixed(1)}`).join(" ");
+  const dots=values.map(d=>`<circle cx="${x(+d.cost_loss_ratio)}" cy="${y(+d.relative_economic_value)}" r="4" fill="#12626f"><title>C/L ${d.cost_loss_ratio}: ${fmt(d.relative_economic_value)}</title></circle>`).join("");
+  host.innerHTML=`<svg viewBox="0 0 ${width} ${height}" role="img"><line x1="${left}" x2="${width-right}" y1="${y(0)}" y2="${y(0)}" stroke="#9aa6ae" stroke-dasharray="4 4"/><path d="${path}" fill="none" stroke="#12626f" stroke-width="3" stroke-dasharray="1000" stroke-dashoffset="1000"><animate attributeName="stroke-dashoffset" from="1000" to="0" dur="1.2s" fill="freeze"/></path>${dots}<text x="${left}" y="${height-8}" fill="#5d6b76" font-size="12">Cost-loss ratio C/L</text><text x="10" y="18" fill="#5d6b76" font-size="12">Relative economic value</text></svg>`;
+}
+valueChart();
+const decision=data.decision;
+document.querySelector("#decision-note").textContent = decision.ice_values_are_region_yaml_placeholders ? "Dollar outputs retain the documented placeholder ICE assumptions and should not be used externally until replaced with region-specific ICE Calculator inputs." : "Decision values use the configured ICE inputs; see the runbook for the assumptions chain.";
+const dollars = value => finite(value) ? "$" + Math.round(Number(value)).toLocaleString() : "—";
+const economics = data.economics;
+function economicImpact() {
+  const section = document.querySelector("#economic-section");
+  const host = document.querySelector("#impact-cards");
+  if (!economics.case_impacts.length && !finite(economics.annual_observed_customer_hours)) { section.style.display="none"; return; }
+  const shortLead = economics.triggered_actions.filter(row => row.lead_days === 1);
+  const potential = shortLead.reduce((total, row) => total + (+row.potential_avoided_cost_proxy_usd || 0), 0);
+  const cards = [
+    [comma(economics.annual_observed_customer_hours), "observed 2023 customer-hours"],
+    [dollars(economics.annual_interruption_cost_proxy_usd), "2023 interruption-cost proxy"],
+    [dollars(potential), `potential avoided proxy at day-1, ${(100*economics.hazard_reduction_delta).toFixed(0)}% effectiveness`],
+  ];
+  host.innerHTML = cards.map(([value, label]) => `<div class="impact"><span>${label}</span><strong>${value}</strong></div>`).join("");
+  const actions = economics.triggered_actions;
+  const table = document.querySelector("#action-table");
+  if (!actions.length) { document.querySelector("#action-chart").style.display="none"; table.innerHTML="<p class='note'>Forecast-triggered coverage needs the stored county-level GEFS probabilities and test predictions.</p>"; return; }
+  const delta = (100 * economics.hazard_reduction_delta).toFixed(0);
+  const rows = actions.map(row => `<tr><td>${row.case}</td><td>day −${row.lead_days}</td><td>${row.triggered_counties}/${row.reporting_counties}</td><td>${finite(row.covered_observed_loss_share) ? (100*row.covered_observed_loss_share).toFixed(0)+"%" : "—"}</td><td>${comma(row.potential_avoided_customer_hours)}</td><td>${dollars(row.potential_avoided_cost_proxy_usd)}</td></tr>`).join("");
+  table.innerHTML=`<table><thead><tr><th>Case</th><th>Lead</th><th>Counties triggered</th><th>Observed loss covered</th><th>Potential avoided customer-hours</th><th>Potential avoided cost proxy</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const hostChart = document.querySelector("#action-chart");
+  const width=720, height=310, left=165, right=72, top=28, bottom=46, max=Math.max(...actions.map(row => +row.potential_avoided_cost_proxy_usd), 1) * 1.15;
+  const plotted = actions.map((row, index) => { const y=top+index*31; const amount=+row.potential_avoided_cost_proxy_usd; const bar=Math.max(1, amount/max*(width-left-right)); return `<text x="${left-10}" y="${y+16}" text-anchor="end" fill="#5d6b76" font-size="11">${row.case.replace(" 2023 ", " ")} · −${row.lead_days}</text><rect class="bar" x="${left}" y="${y}" width="${bar}" height="20" fill="#31699f" style="animation-delay:${index*.08}s"/><text x="${Math.min(width-right, left+bar+6)}" y="${y+15}" fill="#17232d" font-size="11">${dollars(amount)}</text>`; }).join("");
+  hostChart.innerHTML=`<svg viewBox="0 0 ${width} ${height}" role="img"><text x="${left}" y="${height-10}" fill="#5d6b76" font-size="12">Potential avoided interruption-cost proxy at ${delta}% effectiveness</text>${plotted}</svg>`;
+}
+economicImpact();
+const figures=document.querySelector("#figures");
+if (!data.figures.length) document.querySelector("#figure-section").style.display="none";
+figures.innerHTML=data.figures.map(item => `<figure><img src="${item.src}" alt="${item.caption}"><figcaption>${item.caption}</figcaption></figure>`).join("");
+const conclusion = data.split.has_test ? "The final test evaluates the already-frozen model over all of 2023. Interpret the county panels as spatial diagnostics, retain the predictive distributions for operational choices, and keep GEFS case studies distinct from the annual test." : "Review calibration, reference-model comparisons, cross-validation, and the two GEFS case studies before opening 2023. The validation figures are not substitutes for the planned annual held-out test.";
+document.querySelector("#conclusion").textContent=conclusion;
+const observer=new IntersectionObserver(entries => entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add("in"); }), {threshold:.12});
+document.querySelectorAll("section").forEach(section => observer.observe(section));
+</script>
+</body>
+</html>
