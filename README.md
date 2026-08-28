@@ -84,11 +84,8 @@ For the complete generated result record, see [the Phase 2 result memo](docs/pha
 ## Economic impact and forecast value
 
 The model's loss unit is customer-hours: one customer without service for one
-hour. The configured interruption-cost proxy is
-
-\[
-\$/{\rm customer\ hour}=0.88(\$4.00)+0.12(\$180.00)=\$25.12.
-\]
+hour. The configured interruption-cost proxy is **USD 25.12 per customer-hour**,
+calculated as 88% residential at USD 4.00 plus 12% commercial at USD 180.00.
 
 This is a documented placeholder based on the current residential/commercial
 mix, not measured Michigan damage, repair expense, or utility financial loss.
@@ -100,9 +97,9 @@ utility-specific asset, action-cost, work-order, and intervention-outcome data.
 
 Forecast value is evaluated in two complementary ways:
 
-- **Dimensionless cost–loss value:** act when calibrated probability
-  \(p>C/L\), then compare forecast decisions with climatology and perfect
-  information across configured cost–loss ratios.
+- **Dimensionless cost–loss value:** act when calibrated probability exceeds
+  the cost–loss threshold `C/L`, then compare forecast decisions with
+  climatology and perfect information across configured cost–loss ratios.
 - **Action-impact scenarios:** identify counties triggered by the selected
   probability threshold, report the observed loss covered by those counties,
   and apply the explicit mitigation-effectiveness assumption to estimate
