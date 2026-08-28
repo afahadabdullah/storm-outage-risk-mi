@@ -43,6 +43,8 @@ All four August wind-event intervals contained the observation. Every February
 ice-storm interval was below the observation; this is a case-specific
 underprediction diagnostic, not a replacement for annual verification.
 
+![Probabilistic statewide customer-hour forecasts by GEFS lead for the August 2023 wind event, with observed customer-hours](../figures/phase2_gefs_lead_trajectories.png)
+
 ## Publication figures
 
 ![Frozen-model skill summary](../figures/phase2_skill_summary.png)

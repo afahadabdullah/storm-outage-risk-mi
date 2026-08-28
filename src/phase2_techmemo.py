@@ -40,6 +40,7 @@ FIGURES = [
     ("phase2_skill_summary.png", "Model skill, calibration, and cross-validation"),
     ("phase2_county_diagnostics.png", "County-level diagnostic maps"),
     ("phase2_gefs_case_studies.png", "GEFS case-study forecast distributions"),
+    ("phase2_gefs_lead_trajectories.png", "August 2023 probabilistic customer-hour forecasts by GEFS lead"),
     ("phase2_case_hazards.png", "ERA5 hazard fields on the two case-study days"),
     ("phase2_cost_loss_value.png", "Relative economic value by cost-loss ratio"),
 ]

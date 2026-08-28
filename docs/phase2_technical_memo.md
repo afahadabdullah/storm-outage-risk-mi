@@ -53,6 +53,8 @@ The August wind event was contained by all four 10–90% intervals; the February
 | Feb 2023 ice storm | day −2 | $3,184 | $0–$14,660 | $38,402 | 9.0% |
 | Feb 2023 ice storm | day −1 | $3,462 | $0–$16,146 | $38,402 | 6.7% |
 
+![Probabilistic statewide customer-hour forecasts by GEFS lead for the August 2023 wind event, with observed customer-hours](../figures/phase2_gefs_lead_trajectories.png)
+
 ## Economic impact and action scenarios
 
 The configured interruption-cost proxy is **$25.12 per customer-hour**. It is not a direct estimate of physical damage, repair expense, or realized savings. Potential avoided impact assumes a forecast-triggered action reduces consequence by 20%.

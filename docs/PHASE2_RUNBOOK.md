@@ -252,6 +252,7 @@ figures/phase2_skill_summary.{png,pdf}
 figures/phase2_county_diagnostics.{png,pdf}
 figures/phase2_case_hazards.{png,pdf}
 figures/phase2_forecast_triggered_impact_by_lead.{png,pdf}
+figures/phase2_gefs_lead_trajectories.{png,pdf}
 figures/phase2_gefs_case_studies.{png,pdf}
 ```
 

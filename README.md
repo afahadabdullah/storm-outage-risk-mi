@@ -64,6 +64,12 @@ All August wind-event intervals contained the observation. Every February
 ice-storm interval was below the observation, identifying a case-specific
 underprediction that should guide future hazard/magnitude diagnostics.
 
+The August lead-time view below makes the probabilistic comparison explicit:
+the teal line is the forecast median, shading is the 10–90% predictive interval,
+and the dashed line is the 25,577 customer-hours that actually occurred.
+
+![Probabilistic statewide customer-hour forecasts by GEFS lead for the August 2023 wind event, with observed customer-hours.](figures/phase2_gefs_lead_trajectories.png)
+
 ## Publication figures
 
 The PNGs are the GitHub-visible versions; matching vector PDFs are produced by

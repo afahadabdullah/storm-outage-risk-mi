@@ -532,6 +532,68 @@ def plot_gefs_cases(cfg: Config, artifacts: dict,
     return plotstyle.save(fig, PATHS.figures / "phase2_gefs_case_studies.png", note)
 
 
+def plot_gefs_lead_trajectories(matrix: pd.DataFrame) -> tuple[Path, Path] | None:
+    """Plot probabilistic customer-hour forecasts against observed case totals.
+
+    The panel shows the GEFS/model median and 10–90% predictive interval at
+    each lead, with the realized August 2023 customer-hours as a horizontal
+    reference. This complements the distribution panels with the lead-time
+    trajectory.
+    """
+    import matplotlib.pyplot as plt
+
+    required = {"case", "lead_days", "median_customer_hours",
+                "p10_customer_hours", "p90_customer_hours",
+                "observed_customer_hours"}
+    if matrix.empty or not required.issubset(matrix.columns):
+        return None
+    frame = matrix.dropna(subset=list(required)).copy()
+    if frame.empty:
+        return None
+    # This lead-time trajectory is the operational August wind case requested
+    # for the publication view; the February ice case remains in the matrix and
+    # distribution diagnostics but is intentionally not overlaid here.
+    cases = [case for case in dict.fromkeys(frame["case"].tolist())
+             if "aug" in str(case).lower() and "wind" in str(case).lower()]
+    if not cases:
+        return None
+    fig, axes = plt.subplots(1, len(cases), figsize=(6.4 * len(cases), 4.8),
+                             squeeze=False)
+    for index, case in enumerate(cases):
+        ax = axes[0, index]
+        group = frame[frame["case"].eq(case)].sort_values("lead_days")
+        x = group["lead_days"].to_numpy(dtype=float)
+        median = group["median_customer_hours"].to_numpy(dtype=float)
+        p10 = group["p10_customer_hours"].to_numpy(dtype=float)
+        p90 = group["p90_customer_hours"].to_numpy(dtype=float)
+        observed = float(group["observed_customer_hours"].iloc[0])
+        ax.fill_between(x, p10 / 1000.0, p90 / 1000.0,
+                        color=plotstyle.SEQUENCE[1], alpha=0.55,
+                        label="10–90% forecast interval")
+        ax.plot(x, median / 1000.0, color=plotstyle.ACCENT, marker="o",
+                lw=2.2, ms=5, label="forecast median")
+        ax.axhline(observed / 1000.0, color=plotstyle.OBSERVED, ls="--",
+                   lw=1.8, label=f"observed {observed:,.0f}")
+        for lead, value in zip(x, median):
+            ax.annotate(f"{value / 1000:.1f}k", (lead, value / 1000.0),
+                        xytext=(0, 8), textcoords="offset points", ha="center",
+                        fontsize=8, color=plotstyle.INK)
+        ax.set_xticks(sorted(x))
+        ax.set_xlabel("Forecast lead (days before event)")
+        ax.set_ylabel("Statewide customer-hours (thousands)")
+        ax.set_title(case.replace(" 2023", ""), loc="left")
+        ax.invert_xaxis()
+        ax.set_ylim(0, max(float(np.max(p90)), observed) / 1000.0 * 1.18)
+        ax.legend(loc="upper left")
+    fig.suptitle("Probabilistic customer-hour forecast by GEFS lead",
+                 x=0.01, ha="left", fontsize=14, fontweight="bold")
+    fig.tight_layout(rect=(0, 0.05, 1, 0.93))
+    note = ("August wind case only. Teal line: forecast median; shading: 10–90% "
+            "interval; dashed line: realized customer-hours. GEFS members × "
+            "conditional draws.")
+    return plotstyle.save(fig, PATHS.figures / "phase2_gefs_lead_trajectories.png", note)
+
+
 def _markdown_table(matrix: pd.DataFrame, include_test: bool) -> list[str]:
     header = "| Metric | Better | Validation |" + (" Test |" if include_test else "")
     divider = "|---|---|---:|" + ("---:|" if include_test else "")
@@ -624,7 +686,8 @@ def main() -> None:
     figures = [plot_skill_summary(cfg, artifacts),
                plot_county_diagnostics(cfg, counties, label),
                plot_case_hazards(cfg, artifacts),
-               plot_gefs_cases(cfg, artifacts, cases)]
+               plot_gefs_cases(cfg, artifacts, cases),
+               plot_gefs_lead_trajectories(cases)]
     results = write_results(cfg, artifacts, matrix, cases, counties, figures)
     log.info("metric matrix -> %s", MATRIX_PATH)
     log.info("GEFS case matrix -> %s", CASE_MATRIX_PATH)
