@@ -143,6 +143,12 @@ storm, every lead-time interval was below the observed 38,402 customer-hours;
 that underprediction is a case-specific diagnostic, not a replacement for the
 year-long verification.
 
+Economic outputs convert customer-hours to a configured interruption-cost
+proxy and evaluate forecast-triggered mitigation scenarios. They are not direct
+estimates of utility asset damage, repair expense, or realized savings: those
+require utility-specific asset, action-cost, and intervention-effectiveness
+data. The memo makes that distinction explicit for every dollar value.
+
 After each frozen run, `make phase2-techmemo` builds a concise, animated
 [technical memo](docs/phase2_technical_memo.html) from the same result matrices
 and figures used for reporting. It begins with the study split and abstract,
