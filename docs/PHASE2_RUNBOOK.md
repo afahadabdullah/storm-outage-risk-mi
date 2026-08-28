@@ -243,6 +243,7 @@ validation, once-only test, and GEFS forecast artifacts and writes:
 
 ```text
 docs/phase2_results.md
+docs/phase2_technical_memo.html
 data/processed/phase2_results_matrix.csv
 data/processed/phase2_gefs_case_matrix.csv
 data/processed/phase2_county_skill.csv
@@ -264,6 +265,12 @@ counties should not be interpreted as a performance ranking. Once the final
 test marker exists, the report also makes a two-case ERA5 hazard map for the
 2023 GEFS case-study days. Before the test opens, that map is deliberately
 omitted, so `make phase2-apply` remains sealed.
+
+`make phase2-techmemo` creates a short, animated HTML version of the results
+for review or sharing with the figures directory. It reads the same frozen
+matrices, case-study verification, decision-value output, and publication
+figures; it does not train, calibrate, or score anything. The memo is generated
+after the report in both application and final-test Slurm jobs.
 
 ## Final test
 
@@ -311,6 +318,7 @@ make phase2-download-gefs
 make phase2                 # build through Dec 2022, train, calibrate, validate
 make phase2-apply           # composition, forecast, decision value
 make phase2-report          # metric/case matrices + PNG/PDF figures
+make phase2-techmemo        # short animated HTML memo + existing figures
 make phase2-build-test      # only after decisions are frozen
 make phase2-test            # one-time 2023 score
 ```

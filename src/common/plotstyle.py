@@ -34,7 +34,7 @@ def apply() -> None:
         "font.family": ["DejaVu Sans"],
         "font.size": 9.5,
         "axes.titlesize": 10.5,
-        "axes.titleweight": "semibold",
+        "axes.titleweight": "bold",
         "axes.labelsize": 9,
         "axes.labelcolor": MUTED,
         "axes.edgecolor": GRID,

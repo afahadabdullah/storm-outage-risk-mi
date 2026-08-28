@@ -311,7 +311,7 @@ def plot_skill_summary(cfg: Config, artifacts: dict) -> tuple[Path, Path] | None
     plotstyle.panel(ax, "f", "Temporal, spatial, and storm-blocked CV")
 
     fig.suptitle(f"Frozen outage-risk model performance — {label}",
-                 x=0.01, ha="left", fontsize=14, fontweight="semibold")
+                 x=0.01, ha="left", fontsize=14, fontweight="bold")
     fig.tight_layout(rect=(0, 0.035, 1, 0.965))
     note = (f"n={len(pred):,} county-days; events={int(y.sum()):,}. "
             + ("Validation reliability uses out-of-fold isotonic probabilities."
@@ -402,7 +402,7 @@ def plot_county_diagnostics(cfg: Config, counties: pd.DataFrame,
         plotstyle.map_axes(ax)
         plotstyle.panel(ax, letter, title)
     fig.suptitle(f"County-level diagnostic results — {label}", x=0.01, ha="left",
-                 fontsize=14, fontweight="semibold")
+                 fontsize=14, fontweight="bold")
     fig.tight_layout(rect=(0, 0.04, 1, 0.965))
     note = (f"{len(counties)} reporting counties. Orange/blue panels are centred "
             "on zero; grey counties have no evaluable data. County estimates with "
@@ -463,13 +463,13 @@ def plot_case_hazards(cfg: Config, artifacts: dict) -> tuple[Path, Path] | None:
                 plotstyle.map_axes(ax)
                 ax.set_title(f"{title} · daily {aggregation}", loc="left", fontsize=9.5)
     fig.suptitle("ERA5 hazard fields on frozen-model GEFS case-study days",
-                 x=0.01, ha="left", fontsize=14, fontweight="semibold")
+                 x=0.01, ha="left", fontsize=14, fontweight="bold")
     fig.tight_layout(rect=(0, 0.04, 1, 0.965))
     for row, (case, target, _) in enumerate(cases):
         top = axes[row, 0].get_position().y1
         fig.text(0.01, min(top + 0.012, 0.965),
                  f"{case['name']} · {target:%Y-%m-%d}", fontsize=9,
-                 fontweight="semibold", color=plotstyle.INK)
+                 fontweight="bold", color=plotstyle.INK)
     return plotstyle.save(
         fig, PATHS.figures / "phase2_case_hazards.png",
         "Native ERA5 grid cells; gust/temperature are daily extrema and precipitation "
@@ -524,7 +524,7 @@ def plot_gefs_cases(cfg: Config, artifacts: dict,
     title = "Frozen-model GEFS case-study forecasts"
     if synthetic:
         title += " · SYNTHETIC INPUTS (NOT A RESULT)"
-    fig.suptitle(title, x=0.01, ha="left", fontsize=14, fontweight="semibold")
+    fig.suptitle(title, x=0.01, ha="left", fontsize=14, fontweight="bold")
     fig.tight_layout(rect=(0, 0.04, 1, 0.96))
     note = ("31 GEFS members × 100 conditional model draws per lead. Gust and "
             "precipitation are quantile-mapped to the pre-test ERA5 climatology. "

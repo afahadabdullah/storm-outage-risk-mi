@@ -23,7 +23,7 @@ SRC      = src
         phase2-download-canopy phase2-build \
         phase2-train phase2 phase2-build-test phase2-test phase2-backtest-2021 phase2-submit \
         phase2-compose phase2-forecast phase2-forecast-synthetic phase2-value \
-        phase2-apply phase2-preflight phase2-report
+        phase2-apply phase2-preflight phase2-report phase2-techmemo
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -145,7 +145,10 @@ phase2-value: ## section 9: cost-loss value, break-even inspection cost, EVPI
 phase2-report: ## result matrices + publication PNG/PDF figures
 	$(PY) src/phase2_report.py --config $(CFG) --phase2 $(P2)
 
-phase2-apply: phase2-compose phase2-forecast phase2-value phase2-report ## application + report
+phase2-techmemo: phase2-report ## short animated HTML technical memo from frozen artifacts
+	$(PY) src/phase2_techmemo.py --config $(CFG) --phase2 $(P2)
+
+phase2-apply: phase2-compose phase2-forecast phase2-value phase2-techmemo ## application + report
 
 phase2-preflight: ## everything that must be green before submitting anything
 	$(MAKE) doctor-phase2

@@ -123,6 +123,40 @@ validated, and regenerated from configuration and raw inputs.
 metric matrix, a GEFS case-by-lead verification matrix, and matching 300-dpi PNG
 and vector PDF figures for publication.
 
+## Results package
+
+### Final 2023 test at a glance
+
+The frozen model was scored once on the full 2023 holdout. Occurrence skill was
+maintained out of sample: the Brier score was **0.0795** (Brier skill **+0.075**
+relative to county climatology), compared with **0.0840** for the logistic GLM,
+**0.0859** for county climatology, and **0.1118** for the gust-threshold rule.
+Average precision was **0.277** and ROC AUC was **0.746**. Conditional magnitude
+CRPS was **39,164 customer-hours** (skill **+0.084** relative to climatology),
+while restoration concordance was **0.619** with **5.22 h** median absolute
+error. These figures are the 2023 result, not the earlier validation period.
+
+The GEFS case studies demonstrate why the annual test and operational cases are
+reported separately. For the August wind event, all four lead-time 10–90%
+intervals contained the observed 25,577 customer-hours. For the February ice
+storm, every lead-time interval was below the observed 38,402 customer-hours;
+that underprediction is a case-specific diagnostic, not a replacement for the
+year-long verification.
+
+After each frozen run, `make phase2-techmemo` builds a concise, animated
+[technical memo](docs/phase2_technical_memo.html) from the same result matrices
+and figures used for reporting. It begins with the study split and abstract,
+then presents reference-model skill, GEFS case-study verification, decision
+value, county diagnostics, and a short conclusion. Values are inserted from
+the generated artifacts rather than copied into this README, preventing a
+stale narrative when the final 2023 test replaces validation-only results.
+
+The accompanying [results matrix](docs/phase2_results.md) remains the
+publication record: it identifies whether 2023 is still sealed and lists every
+reported metric, GEFS lead, and uncertainty diagnostic. The technical memo is
+generated locally with its figures; commit the two files only when releasing a
+reviewed results package.
+
 ## Repository guide
 
 ```text
