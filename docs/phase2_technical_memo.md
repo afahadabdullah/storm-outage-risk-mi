@@ -66,12 +66,7 @@ Across the 2023 test, observed interruption was **126,927,110 customer-hours**, 
 
 Forecast-triggered actions use the configured C/L threshold closest to 0.10.
 
-| Case | Lead | Counties triggered | Observed loss covered | Potential avoided proxy |
-|---|---:|---:|---:|---:|
-| Aug 2023 wind event | day −1 | 40/80 | 73% | $94,270 |
-| Aug 2023 wind event | day −2 | 50/80 | 99% | $127,032 |
-| Aug 2023 wind event | day −3 | 45/80 | 95% | $122,435 |
-| Aug 2023 wind event | day −5 | 52/80 | 99% | $127,032 |
+![August 2023 wind-event forecast-triggered action by lead](../figures/phase2_forecast_triggered_impact_by_lead.png)
 
 ## Publication figures
 

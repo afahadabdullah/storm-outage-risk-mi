@@ -109,6 +109,16 @@ The animated memo includes the cost–loss curve and forecast-triggered action
 plot. Its dollar annotation remains marked as a proxy until the ICE Calculator
 inputs and utility action costs are replaced with region-specific values.
 
+### Forecast-triggered impact by lead
+
+At the configured `C/L = 0.10` threshold and a 20% consequence-reduction
+scenario, the August wind forecast would have covered the following realized
+loss. These are potential avoided impacts, not observed savings. February's
+ice-storm rows are omitted because no counties crossed the trigger and the
+potential avoided proxy was zero.
+
+![August 2023 wind-event forecast-triggered action by lead: observed loss coverage and potential avoided interruption-cost proxy.](figures/phase2_forecast_triggered_impact_by_lead.png)
+
 ## Scientific scope and methods
 
 ### Inputs and county-day features

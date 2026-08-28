@@ -64,5 +64,17 @@ identify uncertainty that should be addressed with more event and utility
 operations data. Customer-hour-to-dollar values are interruption-cost proxies,
 not direct infrastructure damage or realized savings.
 
+## Forecast-triggered impact by lead
+
+At `C/L = 0.10` and an assumed 20% consequence reduction, the non-zero
+forecast-triggered scenarios are shown below. The labels above the coverage
+bars give the triggered counties out of 80.
+
+![August 2023 wind-event forecast-triggered action by lead](../figures/phase2_forecast_triggered_impact_by_lead.png)
+
+The February ice-storm rows are omitted because no counties crossed the trigger
+and the potential avoided proxy was zero. These are counterfactual potential
+impacts, not observed savings.
+
 Generated from the final frozen artifacts by `make phase2-report`; the README
 is the results-first scientific summary.

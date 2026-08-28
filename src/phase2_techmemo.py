@@ -154,6 +154,59 @@ def economic_scenarios(cfg: Config, cases: pd.DataFrame) -> dict:
     return result
 
 
+def plot_triggered_impact(payload: dict) -> tuple[Path, Path] | None:
+    """Render the lead-time action plot from stored forecast/test artifacts."""
+    actions = [row for row in payload["economics"]["triggered_actions"]
+               if row.get("triggered_counties", 0) > 0
+               and (_number(row.get("potential_avoided_cost_proxy_usd")) or 0) > 0]
+    if not actions:
+        return None
+    import matplotlib.pyplot as plt
+
+    from src.common import plotstyle
+
+    actions = sorted(actions, key=lambda row: (row["case"], -row["lead_days"]))
+    labels = [f"{row['case'].replace(' 2023', '')}\n−{row['lead_days']}"
+              for row in actions]
+    covered = [100 * float(row["covered_observed_loss_share"]) for row in actions]
+    avoided = [float(row["potential_avoided_cost_proxy_usd"]) for row in actions]
+    counts = [f"{row['triggered_counties']}/{row['reporting_counties']}" for row in actions]
+    colors = [plotstyle.ACCENT if row["lead_days"] == min(r["lead_days"] for r in actions)
+              else plotstyle.SEQUENCE[2 + (i % 2)] for i, row in enumerate(actions)]
+
+    fig, axes = plt.subplots(1, 2, figsize=(12.2, 4.9), gridspec_kw={"wspace": .30})
+    ax = axes[0]
+    bars = ax.bar(labels, covered, color=colors, width=.62, edgecolor="white")
+    ax.set_ylim(0, 110)
+    ax.set_ylabel("Observed case loss covered (%)")
+    ax.set_xlabel("Forecast lead")
+    ax.set_title("(a)  Action coverage", loc="left")
+    for bar, value, count in zip(bars, covered, counts):
+        ax.text(bar.get_x() + bar.get_width() / 2, value + 2,
+                f"{value:.0f}%\n{count}", ha="center", va="bottom",
+                fontsize=8.5, color=plotstyle.INK)
+
+    ax = axes[1]
+    bars = ax.bar(labels, avoided, color=colors, width=.62, edgecolor="white")
+    ax.set_ylim(0, max(avoided) * 1.15)
+    ax.set_ylabel("Potential avoided cost proxy (USD)")
+    ax.set_xlabel("Forecast lead")
+    ax.set_title("(b)  Potential avoided impact", loc="left")
+    for bar, value in zip(bars, avoided):
+        ax.text(bar.get_x() + bar.get_width() / 2, value + max(avoided) * .025,
+                f"USD {value:,.0f}", ha="center", va="bottom",
+                fontsize=8.5, color=plotstyle.INK)
+
+    delta = 100 * float(payload["economics"]["hazard_reduction_delta"])
+    fig.suptitle(f"Forecast-triggered action by lead · {payload['region']}",
+                 x=.01, ha="left", fontsize=14, fontweight="bold")
+    fig.subplots_adjust(left=.09, right=.98, bottom=.19, top=.80, wspace=.30)
+    return plotstyle.save(
+        fig, PATHS.figures / "phase2_forecast_triggered_impact_by_lead.png",
+        f"C/L = 0.10; assumed {delta:.0f}% consequence reduction. Cost values are an "
+        "interruption-cost proxy, not observed savings or direct damage.")
+
+
 def build_payload(cfg: Config) -> dict:
     """Return the small, serialisable results payload consumed by the memo."""
     matrix = _frame(MATRIX_PATH)
@@ -439,9 +492,12 @@ def main() -> None:
     if not MATRIX_PATH.exists():
         raise SystemExit("results matrix missing — run `make phase2-report` first")
     cfg = load_config(args.config, args.phase2)
+    payload = build_payload(cfg)
+    plot_triggered_impact(payload)
+    payload = build_payload(cfg)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(render_html(build_payload(cfg)), encoding="utf-8")
+    output.write_text(render_html(payload), encoding="utf-8")
     log.info("technical memo -> %s", output)
 
 
