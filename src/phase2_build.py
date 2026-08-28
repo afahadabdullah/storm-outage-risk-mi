@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Build the multi-year Phase 2 event and county-day feature tables.
 
-The default stops at the configured validation end (2020-07-31). Building 2023
+The default stops at the configured validation end (2022-12-31). Building 2023
 requires an explicit acknowledgement so held-out outcomes are not opened
 accidentally.
 """

@@ -14,7 +14,7 @@ bbox:               [-90.5, 41.6, -82.3, 48.3]
 window_start:       "AUTO"
 window_end:         "AUTO"
 window_days:        5
-window_source_year: 2019          # any year inside train window 2018-2019
+window_source_year: 2019          # any year inside the configured training window
 
 # ---- Same event definition as the frozen regional configuration -------------
 # The earlier 0.2% / one-hour smoke-test relaxation over-detected short routine

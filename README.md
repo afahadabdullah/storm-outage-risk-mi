@@ -26,10 +26,9 @@ deterministic outage estimate.
 
 Historical hazards and outage records are converted from hourly gridded and
 county data into a common county-day table. The frozen core temporal design
-fits on 2018–2019, calibrates and validates on January–July 2020, and reserves
-2023 for a single final evaluation. The separate 2021 retrospective backtest is
-diagnostic only; it does not tune or refit the model. GEFS ensemble forecasts
-then drive the 2023 case-study scenarios at lead days 5, 3, 2, and 1.
+fits on January 2018–June 2022, calibrates and validates on July–December 2022,
+and reserves all of 2023 for a single final evaluation. GEFS ensemble forecasts
+then drive two 2023 frozen-model case studies at lead days 5, 3, 2, and 1.
 
 The workflow image is a method schematic: its maps, curves, density shapes,
 and annotated medians illustrate the types of inputs and outputs, rather than
@@ -83,18 +82,13 @@ produce a county-level distribution of customers affected, customer-hours, and
 cost. Calibration and storm-aware cross-validation evaluate the models without
 treating nearby days from the same storm as independent evidence.
 
-### Encouraging retrospective results
+### Earlier split experiment
 
-With its parameters frozen, the Phase 2 model retained useful skill in the
-available 2021 backtest window (January--May): it achieved an AUC of **0.760**,
-showing strong discrimination between event and non-event county-days; a Brier
-skill score of **0.084** against the demanding county-specific climatology; and
-a magnitude CRPS skill score of **0.230**. In practical terms, the model
-continues to rank higher-risk county-days well, improves probabilistic outage
-estimates beyond each county's historical baseline, and produces more useful
-conditional outage-magnitude distributions than climatology alone. This is a
-retrospective backtest, not the sealed 2023 final evaluation; full details are
-in [the 2021 backtest results](docs/phase2_backtest_2021_results.md).
+An earlier frozen split produced a Jan–May 2021 retrospective diagnostic. That
+record is retained in [the archived 2021 results](docs/phase2_backtest_2021_results.md),
+but 2021 is now part of the enlarged training window and those scores are not
+independent evidence for the retrained model. Temporal generalization before
+the final test is assessed with forward-year cross-validation.
 
 ### Forecast and decision analysis
 
@@ -124,6 +118,10 @@ event records, calibrated validation metrics, fitted model bundles, probabilisti
 outage-risk scenarios, forecast maps, and decision-economic summaries. The
 workflow is designed so that every intermediate artifact can be inspected,
 validated, and regenerated from configuration and raw inputs.
+
+`make phase2-report` turns the frozen run artifacts into a validation/test
+metric matrix, a GEFS case-by-lead verification matrix, and matching 300-dpi PNG
+and vector PDF figures for publication.
 
 ## Repository guide
 

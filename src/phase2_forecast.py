@@ -443,10 +443,16 @@ def main() -> None:
     rng = np.random.default_rng(int(cfg.get("random_seed", 0)) + 7)
 
     import joblib
+    from src.phase2_train import config_digest
+
     model_path = PATHS.models / "phase2_models.joblib"
     if not model_path.exists():
         raise SystemExit("frozen Phase 2 model missing -- run `make phase2-train` first")
     bundle = joblib.load(model_path)
+    if bundle.get("config_sha256") != config_digest(cfg):
+        raise SystemExit(
+            "configuration changed after the model was frozen; refusing to run "
+            "the GEFS case studies with a stale model bundle")
     merged = pd.read_parquet(PATHS.processed / "phase2_merged.parquet")
     feature_fills = forecast_feature_fills(merged, bundle, cfg)
 
@@ -623,6 +629,9 @@ def main() -> None:
         "cases": list(all_out), "leads": leads, "n_members": n_members,
         "draws_per_member": n_draws,
         "synthetic_gefs": bool(args.synthetic_gefs),
+        "config_sha256": bundle["config_sha256"],
+        "model_trained_through": bundle.get("trained_through"),
+        "model_calibrated_through": bundle.get("calibrated_through"),
     }, indent=2))
     gb.flush()
     log.info("realizations -> %s ; uncertainty decomposition -> %s",

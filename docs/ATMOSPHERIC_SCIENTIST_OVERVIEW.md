@@ -103,9 +103,10 @@ different processes. The hurdle model separates *whether* an event occurs from
 - **Quantile calibration:** checks interval coverage; a nominal 90% predictive
   interval should contain roughly 90% of suitable observations.
 
-The core frozen temporal design fits on 2018–2019, calibrates and validates on
-January–July 2020, and reserves 2023 for one final evaluation. A 2021 score is
-a separately labelled retrospective diagnostic and is not used for tuning.
+The core frozen temporal design fits on January 2018–June 2022, calibrates and
+validates on July–December 2022, and reserves all of 2023 for one final
+evaluation. The earlier 2021 retrospective score belongs to a superseded split;
+2021 is now training data and its old score is not evidence for this model.
 
 ## Ensemble forecast and forecast value
 

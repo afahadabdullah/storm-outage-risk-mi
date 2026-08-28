@@ -16,3 +16,4 @@ source slurm/phase2_env.sh
 "${PHASE2_PYTHON}" src/phase2_compose.py
 "${PHASE2_PYTHON}" src/phase2_forecast.py
 "${PHASE2_PYTHON}" src/phase2_value.py
+"${PHASE2_PYTHON}" src/phase2_report.py

@@ -25,3 +25,4 @@ source slurm/phase2_env.sh
 # the observed overlay -- and recompute the per-lead cost-loss curves.
 "${PHASE2_PYTHON}" src/phase2_forecast.py
 "${PHASE2_PYTHON}" src/phase2_value.py
+"${PHASE2_PYTHON}" src/phase2_report.py

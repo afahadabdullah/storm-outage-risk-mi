@@ -11,18 +11,19 @@ by design — a job approaching one is a job that is wrong, not slow.
 
 ## Frozen design
 
-- Train: 2018-01-01 through 2019-12-31.
-- Calibration/validation: 2020-01-01 through 2020-07-31.
+- Train: 2018-01-01 through 2022-06-30.
+- Calibration/validation: 2022-07-01 through 2022-12-31.
 - Final test: 2023 only, opened once after all choices are frozen.
-- Retrospective 2021 scoring is a separately labeled diagnostic; it never
-  enters fitting, calibration, or model selection.
+- The earlier Jan–May 2021 retrospective result records a superseded split.
+  Since 2021 is now training data, it is not independent evidence for this
+  model. Temporal generalization is assessed with forward-year CV.
 - Outage baseline: rolling 30-day 10th percentile. December 2017 is downloaded
   only as lookback context and is never a model row.
 - Reporting cohort: fixed by the **train + validation** years. A county whose
   coverage changes in the test year is reported, never silently dropped — the
   cohort is stored in the model bundle and re-checked when 2023 is opened.
-- Occurrence: LightGBM plus isotonic calibration fitted on the January–July
-  2020 validation period. Reported validation metrics use **out-of-fold**
+- Occurrence: LightGBM plus isotonic calibration fitted on the July–December
+  2022 validation period. Reported validation metrics use **out-of-fold**
   calibrated probabilities within that period;
   the in-sample number is kept beside them so the optimism stays visible.
 - Magnitude: NGBoost Normal density in `log1p(customer_hours)` space, with
@@ -35,7 +36,7 @@ by design — a job approaching one is a job that is wrong, not slow.
 - Baselines (spec §7.3): county-specific climatology, county-specific
   persistence, and the gust > 20 m/s threshold rule.
 - Validation: storm-blocked, leave-one-county-out, and forward-year occurrence
-  CV; proper probabilistic scores for the frozen January–July 2020 validation
+  CV; proper probabilistic scores for the frozen July–December 2022 validation
   period.
 
 ### Storm blocking
@@ -94,7 +95,7 @@ log location, queue state, and elapsed time every 30 seconds, confirms its
 success through Slurm accounting, and does not submit the next stage until the
 current one succeeds. The order is annual EAGLE-I outages, one regional ARCO
 cache, the residual ERA5 monthly array, 2021 NLCD tree-canopy statistics, the
-configured training/validation build (through July 2020), training/validation,
+configured training/validation build (through December 2022), training/validation,
 GEFS, and the application stages. The
 ERA5 array permits five monthly tasks at once; no other Phase 2 stage overlaps
 it. A failed stage stops the controller immediately.
@@ -166,16 +167,20 @@ data/processed/phase2_cox_ph_test.csv
 data/processed/phase2_coverage_exclusions.json
 data/processed/phase2_composed_metrics.json
 data/processed/phase2_uncertainty_by_lead.csv
-figures/phase2_occurrence_validation_2020.png
+figures/phase2_occurrence_validation_2022H2.png
 figures/phase2_forecast_*.png
 figures/phase2_cost_loss_value.png
+data/processed/phase2_results_matrix.csv
+data/processed/phase2_gefs_case_matrix.csv
+figures/phase2_skill_summary.{png,pdf}
+figures/phase2_gefs_case_studies.{png,pdf}
 ```
 
 Specific things to check rather than glance at:
 
 - **All three CV schemes present** in `phase2_cv_metrics.csv` — `storm_blocked`,
   `leave_one_county_out`, and the available `forward_year` folds on the
-  2018–2020 pre-test table. A missing
+  2018–2022 pre-test table. A missing
   scheme is a finding, not a formatting issue.
 - **Leave-one-county-out vs storm-blocked.** If LOCO is much worse, the model is
   memorising county-specific baselines. Spec §7.1 says name it; do.
@@ -225,6 +230,29 @@ The §8.4 money plot is drawn **without** the observed overlay until the test
 year is formally opened. That is deliberate; rerun `make phase2-forecast` after
 the final test to add the truth line.
 
+## Result matrices and publication figures
+
+```bash
+make phase2-report
+```
+
+This reporting step never refits or rescores a model. It reads the existing
+validation, once-only test, and GEFS forecast artifacts and writes:
+
+```text
+docs/phase2_results.md
+data/processed/phase2_results_matrix.csv
+data/processed/phase2_gefs_case_matrix.csv
+figures/phase2_skill_summary.{png,pdf}
+figures/phase2_gefs_case_studies.{png,pdf}
+```
+
+The validation reliability panel uses the same out-of-fold isotonic
+probabilities as the validation metrics. The GEFS matrix reports p10, median,
+p90, observed customer-hours, interval coverage, absolute error, and the
+meteorological share of predictive variance by case and lead. PNG output is
+300 dpi and each figure also has a vector PDF for the manuscript.
+
 ## Final test
 
 Freeze model and hyperparameter decisions in Git and tag the commit. Only then:
@@ -236,8 +264,8 @@ sbatch slurm/phase2_final_test.sbatch
 That job builds `phase2_merged_test.parquet` — a **separate** file from the
 validation-scope table, so a refit remains possible afterwards without repeating
 the 72-file ERA5 aggregation — loads the frozen model without refitting, scores
-2023, writes `models/TEST_YEAR_OPENED.txt`, then redraws the money plot and the
-cost-loss curves now that the observed outcomes may be read.
+2023, writes `models/TEST_YEAR_OPENED.txt`, then redraws the GEFS and cost-loss
+plots with observed outcomes and regenerates the result matrices and figures.
 
 The scorer refuses if the reporting-county cohort in the test build differs from
 the cohort frozen into the bundle. Scoring a frozen model against a different
@@ -251,31 +279,13 @@ longer burns the single attempt.
 Whatever comes out, report it. If the numbers disappoint, diagnose and write the
 diagnosis — do not go back and tune (spec §7.4).
 
-## Retrospective 2021 backtest
+## Superseded 2021 backtest
 
-For an exploratory temporal check before the sealed final test, run:
-
-```bash
-sbatch slurm/phase2_backtest_2021.sbatch
-```
-
-This loads the existing frozen bundle, scores 2021 only, and does **not** create
-`models/TEST_YEAR_OPENED.txt` or alter the 2023 final-test artifacts. The build
-uses every *contiguously available* local ERA5 month starting in January; it
-stops at the first missing month rather than leaving a hidden gap. Review:
-
-```text
-data/processed/phase2_backtest_2021_metrics.json
-data/processed/phase2_backtest_2021_skill_matrix.csv
-data/processed/phase2_backtest_2021_county_skill.csv
-figures/phase2_backtest_2021_*_diagnostics.png
-figures/phase2_backtest_2021_*_maps.png
-```
-
-The diagnostics figure contains reliability, precision-recall, a
-month-by-metric skill matrix, and whole-window scores. The maps show county
-Brier skill against the frozen county climatology, observed event rate, mean
-forecast probability, and probability bias.
+`docs/phase2_backtest_2021_results.md` preserves the Jan–May 2021 result from
+the earlier split. Do not rerun or quote it as evidence for the current model:
+2021 is inside the current training window. The old Make/Slurm entry points now
+refuse with this explanation. Use the `forward_year` rows in
+`phase2_cv_metrics.csv` for pre-test temporal generalization.
 
 ## Direct commands without Slurm
 
@@ -286,11 +296,11 @@ make phase2-download-outages
 make phase2-download-era5
 make phase2-download-canopy
 make phase2-download-gefs
-make phase2                 # build through July 2020, train, calibrate, validate
+make phase2                 # build through Dec 2022, train, calibrate, validate
 make phase2-apply           # composition, forecast, decision value
+make phase2-report          # metric/case matrices + PNG/PDF figures
 make phase2-build-test      # only after decisions are frozen
 make phase2-test            # one-time 2023 score
-make phase2-backtest-2021   # exploratory 2021 diagnostics; 2023 remains sealed
 ```
 
 ## Testing without any data

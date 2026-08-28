@@ -1,4 +1,9 @@
-# Phase 2 retrospective backtest: 2021 available months
+# Archived Phase 2 split experiment: 2021 available months
+
+> **Superseded design.** The current frozen model trains through 2022-06-30,
+> so 2021 is now training data. The numbers below document an earlier split
+> experiment only and must not be reported as out-of-sample performance for the
+> retrained model.
 
 ## Scope
 

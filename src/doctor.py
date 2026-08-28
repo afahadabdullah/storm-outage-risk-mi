@@ -17,6 +17,7 @@ import argparse
 import shutil
 import socket
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -207,10 +208,20 @@ def main(phase: int = 1) -> int:
             failures += 1
             line(BAD, "frozen splits", f"unset in region.yaml: {unset}")
         else:
-            line(OK, "frozen splits",
+            starts_ends = [date.fromisoformat(str(region[key])) for key in splits]
+            (train_start, train_end, val_start, val_end,
+             test_start, test_end) = starts_ends
+            ordered = (train_start <= train_end < val_start <= val_end
+                       < test_start <= test_end)
+            contiguous = (train_end + timedelta(days=1) == val_start
+                          and val_end + timedelta(days=1) == test_start)
+            valid = ordered and contiguous
+            line(OK if valid else BAD, "frozen splits",
                  f"train {region['train_start']}..{region['train_end']} / "
                  f"val {region['val_start']}..{region['val_end']} / "
-                 f"test {region['test_start']}..{region['test_end']}")
+                 f"test {region['test_start']}..{region['test_end']}"
+                 + ("" if valid else " (must be ordered and contiguous)"))
+            failures += 0 if valid else 1
 
         line(OK if region.get("baseline_method") == "rolling" else BAD,
              f"baseline_method = {region.get('baseline_method')!r}",

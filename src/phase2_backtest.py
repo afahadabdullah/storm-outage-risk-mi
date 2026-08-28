@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 """Score the frozen Phase 2 bundle on a retrospective, pre-test year.
 
-This is intentionally separate from ``phase2_train --evaluate-test``.  It
-does not touch the final-test marker or its artifacts, so 2021 can be used to
-inspect temporal generalisation while the configured 2023 test remains sealed.
-The companion builder chooses the last contiguous, locally available ERA5
-month, rather than silently treating absent months as zero-information days.
+This is intentionally separate from ``phase2_train --evaluate-test`` and is
+available only when a complete calendar year lies between validation and the
+sealed test. The current 2018--2022H1 / 2022H2 / 2023 design has no such year,
+so the command refuses rather than presenting training data as out of sample.
 """
 from __future__ import annotations
 
@@ -19,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pandas as pd
 
-from src.common.config import PATHS, ROOT, Config, load_config
+from src.common.config import PATHS, ROOT, load_config
 from src.common.gates import set_phase
 from src.common.logio import get_logger, timed
 from src.phase2_train import (
@@ -208,10 +207,17 @@ def main() -> None:
     cfg = load_config(args.config, args.phase2)
     set_phase(2)
     year = int(args.year)
-    if not (pd.Timestamp(cfg["val_end"]).year < year
-            < pd.Timestamp(cfg["test_start"]).year):
-        raise SystemExit("Backtest year must lie after validation and before the sealed "
-                         "final test")
+    val_year = pd.Timestamp(cfg["val_end"]).year
+    test_year = pd.Timestamp(cfg["test_start"]).year
+    if not (val_year < year < test_year):
+        gap = list(range(val_year + 1, test_year))
+        raise SystemExit(
+            f"Backtest year must lie strictly between validation ({val_year}) and "
+            f"the sealed final test ({test_year}). "
+            + (f"Available gap years: {gap}." if gap else
+               "There is no gap year in the current split. Every pre-test year "
+               "is training or validation data, so a retrospective score would "
+               "not be out of sample; use the forward-year CV results instead."))
 
     import joblib
 

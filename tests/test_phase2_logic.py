@@ -18,28 +18,83 @@ from src.phase2_forecast import (
     quantile_distance,
     quantile_map_cellwise,
 )
+from src.phase2_report import gefs_case_matrix, results_matrix
 from src.phase2_train import (
     _interp_log_quantiles,
     crps_from_quantiles,
     masks,
+    period_slug,
     storm_groups,
+    validate_temporal_split,
 )
 
 
 def test_phase2_frozen_splits_do_not_overlap():
     frame = pd.DataFrame({
-        "date": pd.to_datetime(["2019-12-31", "2020-01-01", "2020-07-31",
-                                "2020-08-01", "2023-01-01", "2023-12-31"])
+        "date": pd.to_datetime(["2022-06-30", "2022-07-01", "2022-12-31",
+                                "2023-01-01", "2023-12-31"])
     })
-    cfg = Config({"train_start": "2018-01-01", "train_end": "2019-12-31",
-                  "val_start": "2020-01-01", "val_end": "2020-07-31",
+    cfg = Config({"train_start": "2018-01-01", "train_end": "2022-06-30",
+                  "val_start": "2022-07-01", "val_end": "2022-12-31",
                   "test_start": "2023-01-01", "test_end": "2023-12-31"})
     split = masks(frame, cfg)
-    assert split["train"].tolist() == [True, False, False, False, False, False]
-    assert split["val"].tolist() == [False, True, True, False, False, False]
-    assert split["test"].tolist() == [False, False, False, False, True, True]
+    assert split["train"].tolist() == [True, False, False, False, False]
+    assert split["val"].tolist() == [False, True, True, False, False]
+    assert split["test"].tolist() == [False, False, False, True, True]
     assert not (split["train"] & split["val"]).any()
     assert not (split["val"] & split["test"]).any()
+
+
+def test_phase2_split_requires_contiguous_windows():
+    cfg = Config({"train_start": "2018-01-01", "train_end": "2022-06-30",
+                  "val_start": "2022-07-02", "val_end": "2022-12-31",
+                  "test_start": "2023-01-01", "test_end": "2023-12-31"})
+    with pytest.raises(ValueError, match="Training and validation"):
+        validate_temporal_split(cfg)
+
+
+def test_period_slug_names_half_year_validation_unambiguously():
+    assert period_slug("2022-07-01", "2022-12-31") == "2022H2"
+    assert period_slug("2023-01-01", "2023-12-31") == "2023"
+
+
+def test_results_matrix_keeps_validation_and_test_side_by_side():
+    artifacts = {
+        "validation_metrics": {"occurrence_brier": 0.08,
+                               "occurrence_roc_auc": 0.75},
+        "test_metrics": {"occurrence_brier": 0.09,
+                         "occurrence_roc_auc": 0.72},
+    }
+    matrix = results_matrix(artifacts)
+    brier = matrix[matrix.key.eq("occurrence_brier")].iloc[0]
+    assert brier.validation == pytest.approx(0.08)
+    assert brier.test == pytest.approx(0.09)
+    assert brier.better == "lower"
+
+
+def test_gefs_case_matrix_reports_frozen_case_interval(tmp_path):
+    path = tmp_path / "realizations.npz"
+    values = np.arange(100, dtype=float)
+    np.savez(path, **{"Feb 2023 ice storm|5": values})
+    archive = np.load(path)
+    cfg = Config({"case_studies": [
+        {"name": "Feb 2023 ice storm", "date": "2023-02-22"}]})
+    artifacts = {
+        "realizations": archive,
+        "opened": False,
+        "test_predictions": None,
+        "uncertainty": pd.DataFrame({
+            "case": ["Feb 2023 ice storm"], "lead_days": [5],
+            "meteorological_share": [0.64],
+        }),
+        "forecast_summary": {"synthetic_gefs": False},
+    }
+    matrix = gefs_case_matrix(cfg, artifacts)
+    assert matrix.loc[0, "median_customer_hours"] == pytest.approx(49.5)
+    assert matrix.loc[0, "p10_customer_hours"] == pytest.approx(9.9)
+    assert matrix.loc[0, "p90_customer_hours"] == pytest.approx(89.1)
+    assert matrix.loc[0, "meteorological_variance_share"] == pytest.approx(0.64)
+    assert matrix.loc[0, "input"] == "GEFS"
 
 
 def test_storm_blocking_keeps_nearby_days_in_one_group():
@@ -53,7 +108,7 @@ def test_storm_blocking_keeps_nearby_days_in_one_group():
 
 def _statewide_frame(n_counties: int, per_county_rate: float, seed: int = 0):
     """A frame at the shape the real study has, not a toy eight rows."""
-    dates = pd.date_range("2018-01-01", "2020-07-31", freq="D")
+    dates = pd.date_range("2018-01-01", "2022-12-31", freq="D")
     fips = [f"26{i:03d}" for i in range(1, 2 * n_counties, 2)]
     frame = pd.MultiIndex.from_product(
         [fips, dates], names=["fips", "date"]).to_frame(index=False)

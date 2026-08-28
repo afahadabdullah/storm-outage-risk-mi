@@ -23,7 +23,7 @@ SRC      = src
         phase2-download-canopy phase2-build \
         phase2-train phase2 phase2-build-test phase2-test phase2-backtest-2021 phase2-submit \
         phase2-compose phase2-forecast phase2-forecast-synthetic phase2-value \
-        phase2-apply phase2-preflight
+        phase2-apply phase2-preflight phase2-report
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -142,7 +142,10 @@ phase2-forecast-synthetic: ## same plumbing on stand-in members; NO skill implie
 phase2-value: ## section 9: cost-loss value, break-even inspection cost, EVPI
 	$(PY) src/phase2_value.py --config $(CFG) --phase2 $(P2)
 
-phase2-apply: phase2-compose phase2-forecast phase2-value ## all three application stages
+phase2-report: ## result matrices + publication PNG/PDF figures
+	$(PY) src/phase2_report.py --config $(CFG) --phase2 $(P2)
+
+phase2-apply: phase2-compose phase2-forecast phase2-value phase2-report ## application + report
 
 phase2-preflight: ## everything that must be green before submitting anything
 	$(MAKE) doctor-phase2
@@ -155,9 +158,10 @@ phase2-build-test: ## explicitly open/build the held-out test year
 phase2-test: ## score frozen model on the test year exactly once
 	$(PY) src/phase2_train.py --config $(CFG) --phase2 $(P2) --evaluate-test
 
-phase2-backtest-2021: ## retrospective 2021 score + diagnostics; leaves 2023 sealed
-	$(PY) src/phase2_build.py --config $(CFG) --phase2 $(P2) --through backtest --backtest-year 2021
-	$(PY) src/phase2_backtest.py --config $(CFG) --phase2 $(P2) --year 2021
+phase2-backtest-2021: ## SUPERSEDED: 2021 is now training data, not an OOS backtest
+	@echo "2021 is inside the frozen 2018-01-01..2022-06-30 training window."
+	@echo "Use phase2_cv_metrics.csv for forward-year temporal checks."
+	@exit 2
 
 phase2-submit: ## sequential Slurm pipeline; each stage is watched and must succeed
 	bash slurm/submit_phase2.sh

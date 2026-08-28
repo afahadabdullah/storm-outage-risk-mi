@@ -10,9 +10,9 @@ tz:                 "UTC"                        # single time reference, conver
 
 # ---- Temporal splits: fix before looking at data, never revisit --------------
 train_start:        "2018-01-01"
-train_end:          "2019-12-31"
-val_start:          "2020-01-01"
-val_end:            "2020-07-31"
+train_end:          "2022-06-30"
+val_start:          "2022-07-01"
+val_end:            "2022-12-31"
 test_start:         "2023-01-01"
 test_end:           "2023-12-31"
 

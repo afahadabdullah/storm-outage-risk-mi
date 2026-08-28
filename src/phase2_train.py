@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Fit, validate, and once-only test the full Phase 2 hurdle model.
 
-Default mode fits on 2018--2019 and calibrates/evaluates on January--July 2020.
+Default mode fits on January 2018--June 2022 and calibrates/evaluates on
+July--December 2022.
 The held-out 2023 test is scored only with ``--evaluate-test``; that mode loads
 the frozen bundle and never refits it. Cross-validation summaries are computed
 on pre-test data only.
@@ -45,12 +46,44 @@ def feature_columns(frame: pd.DataFrame) -> list[str]:
 
 
 def masks(frame: pd.DataFrame, cfg: Config) -> dict[str, pd.Series]:
+    validate_temporal_split(cfg)
     dates = pd.to_datetime(frame.date)
     return {
         "train": dates.between(cfg["train_start"], cfg["train_end"]),
         "val": dates.between(cfg["val_start"], cfg["val_end"]),
         "test": dates.between(cfg["test_start"], cfg["test_end"]),
     }
+
+
+def validate_temporal_split(cfg: Config) -> None:
+    """Require ordered, contiguous train/validation/test windows."""
+    train_start = pd.Timestamp(cfg["train_start"])
+    train_end = pd.Timestamp(cfg["train_end"])
+    val_start = pd.Timestamp(cfg["val_start"])
+    val_end = pd.Timestamp(cfg["val_end"])
+    test_start = pd.Timestamp(cfg["test_start"])
+    test_end = pd.Timestamp(cfg["test_end"])
+    if not train_start <= train_end < val_start <= val_end < test_start <= test_end:
+        raise ValueError(
+            "Temporal split must be ordered train < validation < test; got "
+            f"{train_start.date()}..{train_end.date()}, "
+            f"{val_start.date()}..{val_end.date()}, "
+            f"{test_start.date()}..{test_end.date()}")
+    if train_end + pd.Timedelta(days=1) != val_start:
+        raise ValueError("Training and validation windows must be contiguous")
+    if val_end + pd.Timedelta(days=1) != test_start:
+        raise ValueError("Validation and test windows must be contiguous")
+
+
+def period_slug(start: str, end: str) -> str:
+    """Compact, unambiguous label for a configured evaluation window."""
+    first, last = pd.Timestamp(start), pd.Timestamp(end)
+    if first.year == last.year:
+        if first.month == 1 and first.day == 1 and last.month == 12 and last.day == 31:
+            return str(first.year)
+        if first.month == 7 and first.day == 1 and last.month == 12 and last.day == 31:
+            return f"{first.year}H2"
+    return f"{first:%Y%m%d}_{last:%Y%m%d}"
 
 
 def lgb_classifier(cfg: Config, n_estimators: int | None = None):
@@ -92,7 +125,7 @@ def fit_occurrence(frame: pd.DataFrame, feats: list[str], split, cfg: Config):
     y_val = val.event.astype(int).to_numpy()
     if val.event.nunique() < 2:
         raise ValueError(
-            f"{pd.Timestamp(cfg['val_start']).year} validation year has only "
+            f"validation window {cfg['val_start']}..{cfg['val_end']} has only "
             "one occurrence class")
 
     calibrator = IsotonicRegression(out_of_bounds="clip").fit(raw_val, y_val)
@@ -747,7 +780,7 @@ def fit_and_validate(frame: pd.DataFrame, cfg: Config) -> None:
             "writes the validation-scope table; the test-scope table lives in "
             "phase2_merged_test.parquet and is only read by --evaluate-test.")
     feats = feature_columns(frame)
-    label = f"validation_{pd.Timestamp(cfg['val_start']).year}"
+    label = f"validation_{period_slug(cfg['val_start'], cfg['val_end'])}"
 
     with timed("phase2_model_fit", log):
         occurrence, calibrator, oof_val = fit_occurrence(frame, feats, split, cfg)
@@ -762,7 +795,13 @@ def fit_and_validate(frame: pd.DataFrame, cfg: Config) -> None:
         "magnitude": magnitude, "duration": duration, "features": feats,
         "references": references,
         "config_sha256": config_digest(cfg),
-        "trained_through": cfg["val_end"],
+        "trained_through": cfg["train_end"],
+        "calibrated_through": cfg["val_end"],
+        "split_windows": {
+            "train": [cfg["train_start"], cfg["train_end"]],
+            "validation": [cfg["val_start"], cfg["val_end"]],
+            "test": [cfg["test_start"], cfg["test_end"]],
+        },
         # C3: the cohort is part of the frozen artifact. If the test-year build
         # produces a different reporting county set, the frozen model is being
         # scored against a different study population -- and config_sha256
@@ -790,6 +829,13 @@ def fit_and_validate(frame: pd.DataFrame, cfg: Config) -> None:
     # keeping the in-sample number beside them so the optimism stays visible.
     val_pred["probability_insample_calibrated"] = val_pred.probability.to_numpy()
     val_pred["probability"] = oof_val.to_numpy()
+    # The saved validation rows must carry the same honest OOF probabilities
+    # used for the headline metrics. Keeping only the in-sample calibrator output
+    # here made downstream reliability plots more optimistic than the JSON.
+    prediction["probability_insample_calibrated"] = np.nan
+    prediction.loc[val_pred.index, "probability_insample_calibrated"] = (
+        val_pred["probability_insample_calibrated"])
+    prediction.loc[val_pred.index, "probability"] = val_pred["probability"]
 
     metrics = evaluate(val_pred, train, label, magnitude["quantiles"])
     metrics["calibration_note"] = (
@@ -798,6 +844,9 @@ def fit_and_validate(frame: pd.DataFrame, cfg: Config) -> None:
         "the rows it was fitted on, kept only to show the optimism")
     metrics["magnitude_model_actually_used"] = magnitude["kind"]
     metrics["reporting_counties"] = len(bundle["reporting_counties"])
+    metrics["config_sha256"] = bundle["config_sha256"]
+    metrics["window_start"] = cfg["val_start"]
+    metrics["window_end"] = cfg["val_end"]
 
     joblib.dump(bundle, MODEL_PATH)
     prediction.to_parquet(PRED_PATH, index=False)
@@ -849,6 +898,9 @@ def evaluate_test(frame: pd.DataFrame, cfg: Config, force: bool = False) -> None
                        bundle["magnitude"]["quantiles"])
     metrics["magnitude_model_actually_used"] = bundle.get(
         "magnitude_model_actually_used", bundle["magnitude"]["kind"])
+    metrics["config_sha256"] = bundle["config_sha256"]
+    metrics["window_start"] = cfg["test_start"]
+    metrics["window_end"] = cfg["test_end"]
 
     prediction.to_parquet(PATHS.processed / "phase2_test_predictions.parquet", index=False)
     (PATHS.processed / "phase2_test_metrics.json").write_text(json.dumps(metrics, indent=2))

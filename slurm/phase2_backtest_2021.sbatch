@@ -6,10 +6,11 @@
 #SBATCH --output=logs/slurm/%x-%j.out
 #SBATCH --error=logs/slurm/%x-%j.err
 
-# Exploratory retrospective score only.  This intentionally does not invoke
-# phase2_train --evaluate-test, so the configured final-test year stays sealed.
+# Historical entry point retained to fail loudly. Under the current frozen
+# split, 2021 is training data and cannot be presented as an out-of-sample test.
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
 source slurm/phase2_env.sh
-"${PHASE2_PYTHON}" src/phase2_build.py --through backtest --backtest-year 2021
-"${PHASE2_PYTHON}" src/phase2_backtest.py --year 2021
+printf 'Refusing: 2021 is inside the frozen training window.\n' >&2
+printf 'Use forward-year CV in phase2_cv_metrics.csv instead.\n' >&2
+exit 2
