@@ -96,11 +96,14 @@ def render_markdown(payload: dict) -> str:
             lines.append(f"| {row['case']} | {_money(row['observed_customer_hours'])} | "
                          f"{_money(row['interruption_cost_proxy_usd'])} | {avoided} |")
         lines.append("")
-    if economics["triggered_actions"]:
+    actions = [row for row in economics["triggered_actions"]
+               if row.get("triggered_counties", 0) > 0
+               and (_value(row, "potential_avoided_cost_proxy_usd") or 0) > 0]
+    if actions:
         lines += ["Forecast-triggered actions use the configured C/L threshold closest to 0.10.", "",
                   "| Case | Lead | Counties triggered | Observed loss covered | Potential avoided proxy |",
                   "|---|---:|---:|---:|---:|"]
-        for row in economics["triggered_actions"]:
+        for row in actions:
             covered = _value(row, "covered_observed_loss_share")
             lines.append(f"| {row['case']} | day −{row['lead_days']} | "
                          f"{row['triggered_counties']}/{row['reporting_counties']} | "

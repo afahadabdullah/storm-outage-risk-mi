@@ -404,7 +404,7 @@ function economicImpact() {
     [dollars(potential), `potential avoided proxy at day-1, ${(100*economics.hazard_reduction_delta).toFixed(0)}% effectiveness`],
   ];
   host.innerHTML = cards.map(([value, label]) => `<div class="impact"><span>${label}</span><strong>${value}</strong></div>`).join("");
-  const actions = economics.triggered_actions;
+  const actions = economics.triggered_actions.filter(row => row.triggered_counties > 0 && finite(row.potential_avoided_cost_proxy_usd) && row.potential_avoided_cost_proxy_usd > 0);
   const table = document.querySelector("#action-table");
   if (!actions.length) { document.querySelector("#action-chart").style.display="none"; table.innerHTML="<p class='note'>Forecast-triggered coverage needs the stored county-level GEFS probabilities and test predictions.</p>"; return; }
   const delta = (100 * economics.hazard_reduction_delta).toFixed(0);
