@@ -11,6 +11,7 @@ import argparse
 import json
 import runpy
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -126,8 +127,10 @@ def read_outage_year(cfg: Config, year: int) -> pd.DataFrame:
     if not path.exists():
         raise SystemExit(f"{path} missing -- run `make phase2-download-outages`")
     pieces = []
-    for chunk in pd.read_csv(path, dtype={"fips_code": "string"},
-                             chunksize=1_000_000):
+    started = time.monotonic()
+    log.info("outages %d: reading %s", year, path.name)
+    for chunk_no, chunk in enumerate(pd.read_csv(
+            path, dtype={"fips_code": "string"}, chunksize=1_000_000), start=1):
         chunk = normalize_outage_frame(chunk, cfg)
         if chunk.empty:
             continue
@@ -137,11 +140,18 @@ def read_outage_year(cfg: Config, year: int) -> pd.DataFrame:
                   .rename(columns={"fips_code": "fips",
                                    "run_start_time": "time"}))
         pieces.append(hourly)
+        if chunk_no == 1 or chunk_no % 5 == 0:
+            log.info("outages %d: processed %d CSV chunk(s), %d hourly blocks "
+                     "kept (%.1f min)", year, chunk_no, len(pieces),
+                     (time.monotonic() - started) / 60)
     if not pieces:
         return pd.DataFrame(columns=["fips", "time", "customers_out"])
     # A CSV chunk can split an hour; consolidate the partial hourly maxima.
-    return (pd.concat(pieces, ignore_index=True)
-            .groupby(["fips", "time"], as_index=False).customers_out.max())
+    result = (pd.concat(pieces, ignore_index=True)
+              .groupby(["fips", "time"], as_index=False).customers_out.max())
+    log.info("outages %d: complete — %d hourly rows in %.1f min", year,
+             len(result), (time.monotonic() - started) / 60)
+    return result
 
 
 def build_hourly(cfg: Config, end: pd.Timestamp) -> tuple[pd.DataFrame, dict]:
@@ -149,9 +159,13 @@ def build_hourly(cfg: Config, end: pd.Timestamp) -> tuple[pd.DataFrame, dict]:
     baseline_days = int(cfg.get("baseline_window_days", 30))
     start = model_start - pd.Timedelta(days=baseline_days)
     end_utc = pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1)
-    years = range(start.year, pd.Timestamp(end).year + 1)
-    annual = {year: read_outage_year(cfg, year) for year in years
-              if year <= pd.Timestamp(end).year}
+    years = list(range(start.year, pd.Timestamp(end).year + 1))
+    annual = {}
+    log.info("hourly outages: reading %d annual file(s), %d-%d", len(years),
+             years[0], years[-1])
+    for position, year in enumerate(years, start=1):
+        log.info("hourly outages: year %d/%d (%d)", position, len(years), year)
+        annual[year] = read_outage_year(cfg, year)
     # The prior-year slice is baseline context only. Coverage stability is
     # assessed from the frozen study period, which intentionally starts in 2018.
     annual_sets = {year: set(frame.fips.astype(str))
@@ -175,6 +189,7 @@ def build_hourly(cfg: Config, end: pd.Timestamp) -> tuple[pd.DataFrame, dict]:
                     f"{min(cohort_sets)}-{max(cohort_sets)}" if cohort_sets else "-",
                     unstable)
     reporting = sorted(stable)
+    log.info("hourly outages: frozen reporting cohort has %d counties", len(reporting))
 
     # A coverage change confined to the test year is reported, never acted on.
     test_years = sorted(y for y in annual_sets if y > pd.Timestamp(cfg["val_end"]).year)
@@ -202,6 +217,8 @@ def build_hourly(cfg: Config, end: pd.Timestamp) -> tuple[pd.DataFrame, dict]:
 
     times = pd.date_range(start, end_utc, freq="1h", inclusive="left")
     index = pd.MultiIndex.from_product([reporting, times], names=["fips", "time"])
+    log.info("hourly outages: expanding %d observed rows to %d county-hour rows",
+             len(raw), len(index))
     hourly = (raw.set_index(["fips", "time"]).reindex(index, fill_value=0.0)
               .reset_index())
     mcc = load_mcc()
@@ -226,18 +243,23 @@ def build_hourly(cfg: Config, end: pd.Timestamp) -> tuple[pd.DataFrame, dict]:
     if hourly.loc[hourly.time >= model_start, "baseline"].isna().any():
         raise ValueError("rolling baseline is incomplete at the model boundary")
     hourly["frac_excess"] = (hourly.frac_out - hourly.baseline).clip(lower=0)
-    return hourly[hourly.time >= model_start].copy(), coverage
+    result = hourly[hourly.time >= model_start].copy()
+    log.info("hourly outages: baseline and excess-outage fields complete — %d rows",
+             len(result))
+    return result, coverage
 
 
 def build_events(hourly: pd.DataFrame, cfg: Config) -> pd.DataFrame:
     mod = runpy.run_path(str(ROOT / "src" / "03_build_events.py"))
     gb = book("phase2_events")
+    log.info("events: detecting events from %d county-hour rows", len(hourly))
     events = mod["detect_events"](hourly, cfg, gb)
     lo, hi = [int(v) for v in cfg.get("expected_event_count", [500, 20_000])]
     if not lo <= len(events) <= hi:
         log.warning("Phase 2 detected %d events, outside the expected %d-%d; "
                     "inspect county/event distributions", len(events), lo, hi)
     gb.flush()
+    log.info("events: complete — %d events", len(events))
     return events
 
 
@@ -263,11 +285,17 @@ def build_weather(cfg: Config, end: pd.Timestamp) -> pd.DataFrame:
     label_regimes = mod["label_regimes"]
     months = pd.period_range(pd.Timestamp(cfg["train_start"]), end, freq="M")
     frames = []
-    for period in months:
+    started = time.monotonic()
+    total = len(months)
+    for position, period in enumerate(months, start=1):
         path = PATHS.raw / "era5_monthly" / f"era5_{period.year}{period.month:02d}.nc"
         if not path.exists():
             raise SystemExit(f"{path} missing -- run the monthly ERA5 download job")
-        log.info("aggregating %s", path.name)
+        elapsed = time.monotonic() - started
+        eta = elapsed / (position - 1) * (total - position + 1) if position > 1 else 0.0
+        log.info("weather: month %d/%d — %s (elapsed %.1f min%s)",
+                 position, total, path.name, elapsed / 60,
+                 f", ETA {eta / 60:.1f} min" if position > 1 else "")
         with open_month(path) as ds:
             local = Config(cfg.copy())
             local["window_days"] = int(ds.sizes["time"] // 24)
@@ -293,11 +321,14 @@ def build_weather(cfg: Config, end: pd.Timestamp) -> pd.DataFrame:
             f"canopy_pct missing for {len(missing)} county(ies): {missing}. "
             "Phase 2 requires data/raw/canopy_county.csv -- run "
             "`make phase2-download-canopy`.")
+    log.info("weather: %d county-day rows complete in %.1f min", len(weather),
+             (time.monotonic() - started) / 60)
     return weather
 
 
 def join_targets(weather: pd.DataFrame, events: pd.DataFrame,
                  hourly: pd.DataFrame) -> pd.DataFrame:
+    log.info("joining targets: %d weather rows and %d events", len(weather), len(events))
     events = events.copy()
     events["date"] = pd.to_datetime(events.date).dt.tz_localize(None).dt.normalize()
     agg = events.groupby(["fips", "date"]).agg(
@@ -324,6 +355,8 @@ def join_targets(weather: pd.DataFrame, events: pd.DataFrame,
     merged["days_since_last_event"] = (
         pd.to_datetime(merged.date) - pd.to_datetime(previous)).dt.days
     merged["days_since_last_event"] = merged.days_since_last_event.fillna(3650).clip(upper=3650)
+    log.info("joining targets: complete — %d county-days, %d event county-days",
+             len(merged), int(merged.event.sum()))
     return merged
 
 
@@ -340,6 +373,8 @@ def main() -> None:
     args = ap.parse_args()
     cfg = load_config(args.config, args.phase2)
     set_phase(2)
+    log.info("Phase 2 build: scope=%s; train=%s..%s; validation=%s..%s", args.through,
+             cfg["train_start"], cfg["train_end"], cfg["val_start"], cfg["val_end"])
     if args.through == "test" and not args.acknowledge_test:
         raise SystemExit(
             f"Refusing to open {pd.Timestamp(cfg['test_start']).year}. Add "

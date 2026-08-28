@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -116,11 +117,15 @@ def fit_occurrence(frame: pd.DataFrame, feats: list[str], split, cfg: Config):
     train, val = frame[split["train"]], frame[split["val"]]
     y = train.event.astype(int)
     weight = float((1 - y).sum() / max(y.sum(), 1))
+    log.info("occurrence: fitting LightGBM on %d training rows (%d events); "
+             "calibrating on %d validation rows (%d events)",
+             len(train), int(y.sum()), len(val), int(val.event.sum()))
     model = lgb_classifier(cfg)
     model.set_params(scale_pos_weight=weight)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model.fit(train[feats], y)
+    log.info("occurrence: LightGBM fit complete; calculating validation probabilities")
     raw_val = model.predict_proba(val[feats])[:, 1]
     y_val = val.event.astype(int).to_numpy()
     if val.event.nunique() < 2:
@@ -134,10 +139,12 @@ def fit_occurrence(frame: pd.DataFrame, feats: list[str], split, cfg: Config):
     oof = np.empty_like(raw_val)
     folds = StratifiedKFold(n_splits=n_folds, shuffle=True,
                             random_state=int(cfg.get("random_seed", 0)))
-    for fit_idx, score_idx in folds.split(raw_val.reshape(-1, 1), y_val):
+    for fold, (fit_idx, score_idx) in enumerate(
+            folds.split(raw_val.reshape(-1, 1), y_val), start=1):
         inner = IsotonicRegression(out_of_bounds="clip").fit(
             raw_val[fit_idx], y_val[fit_idx])
         oof[score_idx] = inner.predict(raw_val[score_idx])
+        log.info("occurrence: isotonic OOF fold %d/%d complete", fold, n_folds)
     log.info("isotonic calibration: %d-fold out-of-fold probabilities computed "
              "for the validation year (in-sample fit is what ships in the bundle)",
              n_folds)
@@ -151,6 +158,7 @@ def fit_magnitude(frame: pd.DataFrame, feats: list[str], split, cfg: Config):
     X = train[feats]
     y = np.log1p(train.customer_hours.to_numpy())
     quantiles = [float(q) for q in cfg["quantiles"]]
+    log.info("magnitude: fitting on %d event rows with %d features", len(train), len(feats))
     if cfg.get("magnitude_model", "ngboost") == "ngboost":
         try:
             from ngboost import NGBRegressor
@@ -162,19 +170,23 @@ def fit_magnitude(frame: pd.DataFrame, feats: list[str], split, cfg: Config):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 model.fit(X, y)
+            log.info("magnitude: NGBoost fit complete")
             return {"kind": "ngboost", "model": model, "quantiles": quantiles}
         except Exception as err:
             log.warning("NGBoost failed (%s); using LightGBM quantiles", err)
 
     import lightgbm as lgb
     models = {}
-    for q in quantiles:
+    for position, q in enumerate(quantiles, start=1):
+        log.info("magnitude: LightGBM quantile %d/%d (q=%.2f)", position,
+                 len(quantiles), q)
         model = lgb.LGBMRegressor(
             objective="quantile", alpha=q, n_estimators=int(cfg["n_boost_rounds"]),
             learning_rate=0.04, num_leaves=15, min_child_samples=20,
             random_state=int(cfg.get("random_seed", 0)), n_jobs=-1, verbose=-1)
         model.fit(X, y)
         models[q] = model
+    log.info("magnitude: all LightGBM quantiles complete")
     return {"kind": "lgbm_quantile", "models": models, "quantiles": quantiles}
 
 
@@ -269,12 +281,16 @@ def fit_duration(frame: pd.DataFrame, feats: list[str], split, cfg: Config):
     fit["duration_"] = duration
     fit["observed_"] = observed
 
+    log.info("duration: fitting Weibull AFT and Cox PH on %d event rows, %d covariates",
+             len(fit), X.shape[1])
     aft = WeibullAFTFitter(penalizer=0.1)
     aft.fit(fit, duration_col="duration_", event_col="observed_")
+    log.info("duration: Weibull AFT complete; fitting Cox PH diagnostic")
     cox = CoxPHFitter(penalizer=0.1)
     cox.fit(fit, duration_col="duration_", event_col="observed_")
     ph = proportional_hazard_test(cox, fit, time_transform="rank")
     ph.summary.to_csv(PATHS.processed / "phase2_cox_ph_test.csv")
+    log.info("duration: Cox PH and proportional-hazards diagnostic complete")
     return {"model": aft, "cox": cox, "columns": list(X.columns),
             "numeric": numeric, "fill": fill}
 
@@ -352,6 +368,8 @@ def fit_reference_models(frame: pd.DataFrame, feats: list[str], split, cfg: Conf
     and reporting it makes everything else in the write-up more believable.
     """
     import statsmodels.api as sm
+
+    log.info("reference models: fitting logistic and negative-binomial GLMs")
 
     # A deliberately reduced, interpretable feature set -- not the full 26.
     reduced = [c for c in ("gust_max", "hours_gust_gt_18", "precip_total",
@@ -675,9 +693,15 @@ def occurrence_cv(frame: pd.DataFrame, feats: list[str], cfg: Config) -> pd.Data
     rows = []
 
     def run_scheme(name, groups, splitter):
+        total = splitter.get_n_splits(frame, frame.event, groups)
+        started = time.monotonic()
+        log.info("CV %s: starting %d fold(s)", name, total)
+        completed = 0
         for fold, (tr_idx, va_idx) in enumerate(splitter.split(frame, frame.event, groups)):
             train, val = frame.iloc[tr_idx], frame.iloc[va_idx]
             if train.event.nunique() < 2 or val.event.nunique() < 2:
+                log.warning("CV %s: fold %d/%d skipped because it has one class",
+                            name, fold + 1, total)
                 continue
             model = lgb_classifier(cfg, int(cfg.get("cv_n_estimators", 200)))
             y = train.event.astype(int)
@@ -688,6 +712,12 @@ def occurrence_cv(frame: pd.DataFrame, feats: list[str], cfg: Config) -> pd.Data
                          "events": int(val.event.sum()),
                          "brier": float(brier_score_loss(val.event, p)),
                          "roc_auc": float(roc_auc_score(val.event, p))})
+            completed += 1
+            elapsed = time.monotonic() - started
+            eta = elapsed / completed * (total - fold - 1) if completed else 0.0
+            log.info("CV %s: fold %d/%d complete (%.1f min elapsed%s)",
+                     name, fold + 1, total, elapsed / 60,
+                     f", ETA {eta / 60:.1f} min" if completed else "")
 
     storm = storm_groups(frame, int(cfg.get("storm_gap_days", 2)),
                          float(cfg.get("storm_min_county_frac", 0.10)))
@@ -705,7 +735,11 @@ def occurrence_cv(frame: pd.DataFrame, feats: list[str], cfg: Config) -> pd.Data
         run_scheme("leave_one_county_out", frame.fips, LeaveOneGroupOut())
 
     years = pd.to_datetime(frame.date).dt.year
-    for year in sorted(years.unique())[1:]:
+    forward_years = sorted(years.unique())[1:]
+    log.info("CV forward_year: starting %d fold(s): %s", len(forward_years),
+             ", ".join(map(str, forward_years)))
+    forward_started = time.monotonic()
+    for position, year in enumerate(forward_years, start=1):
         train, val = frame[years < year], frame[years == year]
         if train.event.nunique() < 2 or val.event.nunique() < 2:
             continue
@@ -718,6 +752,11 @@ def occurrence_cv(frame: pd.DataFrame, feats: list[str], cfg: Config) -> pd.Data
                      "events": int(val.event.sum()),
                      "brier": float(brier_score_loss(val.event, p)),
                      "roc_auc": float(roc_auc_score(val.event, p))})
+        elapsed = time.monotonic() - forward_started
+        eta = elapsed / position * (len(forward_years) - position)
+        log.info("CV forward_year: %d (%d/%d) complete (%.1f min elapsed%s)",
+                 year, position, len(forward_years), elapsed / 60,
+                 f", ETA {eta / 60:.1f} min" if position else "")
     return pd.DataFrame(rows)
 
 
@@ -781,11 +820,17 @@ def fit_and_validate(frame: pd.DataFrame, cfg: Config) -> None:
             "phase2_merged_test.parquet and is only read by --evaluate-test.")
     feats = feature_columns(frame)
     label = f"validation_{period_slug(cfg['val_start'], cfg['val_end'])}"
+    log.info("training: %d total rows, %d features; train=%d rows, validation=%d rows",
+             len(frame), len(feats), int(split["train"].sum()), int(split["val"].sum()))
 
     with timed("phase2_model_fit", log):
+        log.info("training: stage 1/4 occurrence model")
         occurrence, calibrator, oof_val = fit_occurrence(frame, feats, split, cfg)
+        log.info("training: stage 2/4 magnitude model")
         magnitude = fit_magnitude(frame, feats, split, cfg)
+        log.info("training: stage 3/4 restoration-duration model")
         duration = fit_duration(frame, feats, split, cfg)
+        log.info("training: stage 4/4 reference models")
         references = (fit_reference_models(frame, feats, split, cfg)
                       if bool(cfg.get("fit_reference_models", True)) else {})
 
@@ -820,9 +865,11 @@ def fit_and_validate(frame: pd.DataFrame, cfg: Config) -> None:
     # phase2_cv_metrics.csv -- the one file the runbook says to review before
     # opening the test year.
     with timed("phase2_cross_validation", log):
+        log.info("training: starting cross-validation")
         cv = occurrence_cv(frame[split["train"] | split["val"]].reset_index(drop=True),
                            feats, cfg)
 
+    log.info("training: generating validation predictions and metrics")
     prediction = predict(bundle, frame)
     val_pred = prediction[split["val"].to_numpy()].copy()
     # C1: report out-of-fold calibrated probabilities for the validation year,
@@ -853,6 +900,7 @@ def fit_and_validate(frame: pd.DataFrame, cfg: Config) -> None:
     METRIC_PATH.write_text(json.dumps(metrics, indent=2))
     cv.to_csv(CV_PATH, index=False)
     plot_validation(val_pred, label)
+    log.info("training: wrote model, predictions, metrics, CV table, and validation figure")
 
     log.info("validation BSS %.3f (vs county climatology), AP %.3f, AUC %.3f, "
              "magnitude CRPSS %.3f",
