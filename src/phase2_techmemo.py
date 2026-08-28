@@ -34,7 +34,7 @@ TEST_PREDICTION_PATH = PATHS.processed / "phase2_test_predictions.parquet"
 FORECAST_PROB_PATH = PATHS.processed / "phase2_forecast_county_probs.parquet"
 
 AUTHOR = "Afahad Abdullah"
-INSTITUTION = "George Mason University"
+INSTITUTION = "NASA Goddard Space Flight Center"
 
 FIGURES = [
     ("phase2_skill_summary.png", "Model skill, calibration, and cross-validation"),
