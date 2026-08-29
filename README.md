@@ -14,6 +14,12 @@ Abdullah Al Fahad · NASA Goddard Space Flight Center
 ![Inputs](https://img.shields.io/badge/inputs-ERA5%20%C2%B7%20EAGLE--I%20%C2%B7%20GEFS%20%C2%B7%20NLCD-4c6ef5)
 ![Status](https://img.shields.io/badge/status-frozen%20model%20%C2%B7%202023%20test%20scored%20once-2f9e44)
 
+### Preprint
+
+**[Read it online](https://claude.ai/code/artifact/45471fdf-df4d-4339-863b-3a95afd44777)**&nbsp; · &nbsp;**[Download the PDF](preprint/storm_outage_risk_michigan_preprint.pdf)**&nbsp; · &nbsp;[LaTeX source](preprint/)
+
+*12 pages. Frozen model, 2023 holdout scored once. Not peer reviewed.*
+
 </div>
 
 ---
@@ -51,12 +57,17 @@ an asset-fragility or physical damage model. It is region-portable: a single
 | **Forecast value** | At a −5-day GEFS lead, triggered counties contained **99%** of realized event loss |
 | **Reproducibility** | One frozen split, one test evaluation, `make`-driven pipeline with Slurm job chain |
 
-### Preprint
+### About the preprint
 
-A two-column preprint written from the results below is in
-[`preprint/`](preprint/) --- [read the PDF](preprint/storm_outage_risk_michigan_preprint.pdf).
-The LaTeX source reads its figures from `figures/`, so rebuilding it (`cd preprint && make`)
-always picks up whatever the reporting job last wrote.
+`preprint/` holds the paper, its LaTeX source, a verified bibliography, and a Makefile.
+`main.tex` reads its figures from `figures/` rather than carrying copies, so
+`cd preprint && make` always rebuilds against whatever `make phase2-report` last wrote —
+the PDF cannot drift from the artifacts it reports. Every result value in the paper is
+transcribed from [`docs/phase2_results.md`](docs/phase2_results.md), and the built PDF is
+diffed back against that source before release.
+
+The [online version](https://claude.ai/code/artifact/45471fdf-df4d-4339-863b-3a95afd44777) carries the same results with the figures at screen
+resolution, and offers the PDF for download.
 
 ### Contents
 
