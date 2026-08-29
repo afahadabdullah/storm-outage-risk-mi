@@ -16,7 +16,7 @@ Abdullah Al Fahad · NASA Goddard Space Flight Center
 
 ### Preprint
 
-**[Read it online](https://claude.ai/code/artifact/45471fdf-df4d-4339-863b-3a95afd44777)**&nbsp; · &nbsp;**[Download the PDF](preprint/storm_outage_risk_michigan_preprint.pdf)**&nbsp; · &nbsp;[LaTeX source](preprint/)
+**[Read the PDF](preprint/storm_outage_risk_michigan_preprint.pdf)**&nbsp; · &nbsp;[LaTeX source](preprint/)
 
 *12 pages. Frozen model, 2023 holdout scored once. Not peer reviewed.*
 
@@ -65,9 +65,6 @@ an asset-fragility or physical damage model. It is region-portable: a single
 the PDF cannot drift from the artifacts it reports. Every result value in the paper is
 transcribed from [`docs/phase2_results.md`](docs/phase2_results.md), and the built PDF is
 diffed back against that source before release.
-
-The [online version](https://claude.ai/code/artifact/45471fdf-df4d-4339-863b-3a95afd44777) carries the same results with the figures at screen
-resolution, and offers the PDF for download.
 
 ### Contents
 
