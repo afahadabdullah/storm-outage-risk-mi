@@ -9,7 +9,7 @@ ensemble forecasts.**
 Abdullah Al Fahad · NASA Goddard Space Flight Center
 
 ![Python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
-![Region](https://img.shields.io/badge/domain-Michigan%20%C2%B7%2083%20counties-1f6f8b)
+![Region](https://img.shields.io/badge/domain-Michigan%20%C2%B7%20county--day-1f6f8b)
 ![Period](https://img.shields.io/badge/record-2018--2023%20hourly-1f6f8b)
 ![Inputs](https://img.shields.io/badge/inputs-ERA5%20%C2%B7%20EAGLE--I%20%C2%B7%20GEFS%20%C2%B7%20NLCD-4c6ef5)
 ![Status](https://img.shields.io/badge/status-frozen%20model%20%C2%B7%202023%20test%20scored%20once-2f9e44)
@@ -50,6 +50,13 @@ an asset-fragility or physical damage model. It is region-portable: a single
 | **Restoration skill** | Concordance **0.619**; median absolute error **5.22 h** |
 | **Forecast value** | At a −5-day GEFS lead, triggered counties contained **99%** of realized event loss |
 | **Reproducibility** | One frozen split, one test evaluation, `make`-driven pipeline with Slurm job chain |
+
+### Preprint
+
+A two-column preprint written from the results below is in
+[`preprint/`](preprint/) --- [read the PDF](preprint/storm_outage_risk_michigan_preprint.pdf).
+The LaTeX source reads its figures from `figures/`, so rebuilding it (`cd preprint && make`)
+always picks up whatever the reporting job last wrote.
 
 ### Contents
 
